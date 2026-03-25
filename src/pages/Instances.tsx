@@ -59,10 +59,12 @@ export default function Instances() {
   const checkStatus = async (instanceId: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('wuzapi-proxy', {
-        body: { instanceId, endpoint: '/api/status', method: 'GET' },
+        body: { instanceId, endpoint: '/session/status', method: 'GET' },
       });
 
-      const isConnected = !error && data && data.Connected === true;
+      const connectedValue = (data as any)?.Connected ?? (data as any)?.connected ?? (data as any)?.data?.Connected ?? (data as any)?.data?.connected;
+      const isConnected = !error && Boolean(connectedValue);
+
       setInstances(prev =>
         prev.map(i =>
           i.id === instanceId ? { ...i, connected: isConnected, statusLoading: false } : i
@@ -125,14 +127,16 @@ export default function Instances() {
 
     try {
       const { data, error } = await supabase.functions.invoke('wuzapi-proxy', {
-        body: { instanceId, endpoint: '/api/qrcode', method: 'GET' },
+        body: { instanceId, endpoint: '/session/qr', method: 'GET' },
       });
 
-      if (error || !data?.QRCode) {
+      const qrCode = (data as any)?.QRCode ?? (data as any)?.qrCode ?? (data as any)?.qrcode ?? (data as any)?.data?.QRCode ?? (data as any)?.data?.qrCode ?? (data as any)?.data?.qrcode;
+
+      if (error || !qrCode) {
         toast({ title: 'Erro', description: 'Não foi possível obter o QR Code. Verifique se a instância está desconectada.', variant: 'destructive' });
         setQrDialog(prev => ({ ...prev, open: false }));
       } else {
-        setQrDialog(prev => ({ ...prev, qr: data.QRCode }));
+        setQrDialog(prev => ({ ...prev, qr: String(qrCode).replace(/^data:image\/png;base64,/, '') }));
       }
     } catch {
       toast({ title: 'Erro', description: 'Falha ao conectar com a WuzAPI', variant: 'destructive' });

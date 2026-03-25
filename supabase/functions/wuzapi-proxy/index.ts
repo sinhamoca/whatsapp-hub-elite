@@ -67,32 +67,66 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Proxy request to WuzAPI
-    const url = `${instance.api_url.replace(/\/$/, "")}/${endpoint.replace(/^\//, "")}`;
-    const fetchOptions: RequestInit = {
-      method,
-      headers: {
-        Authorization: `Bearer ${instance.token}`,
-        "Content-Type": "application/json",
-      },
-    };
+    // Proxy request to WuzAPI (with endpoint fallbacks for compatibility)
+    const baseUrl = instance.api_url.replace(/\/$/, "");
+    const requestedEndpoint = `/${String(endpoint).replace(/^\//, "")}`;
 
-    if (method !== "GET" && payload) {
-      fetchOptions.body = JSON.stringify(payload);
+    const isStatusEndpoint = ["/api/status", "/session/status", "/status"].includes(requestedEndpoint);
+    const isQrEndpoint = ["/api/qrcode", "/session/qr", "/qrcode"].includes(requestedEndpoint);
+
+    const endpointCandidates = isStatusEndpoint
+      ? [requestedEndpoint, "/session/status", "/status", "/api/status"]
+      : isQrEndpoint
+      ? [requestedEndpoint, "/session/qr", "/qrcode", "/api/qrcode"]
+      : [requestedEndpoint];
+
+    const uniqueCandidates = [...new Set(endpointCandidates)];
+
+    let wuzResponse: Response | null = null;
+    let rawText = "";
+
+    for (const candidate of uniqueCandidates) {
+      const url = `${baseUrl}${candidate}`;
+      const fetchOptions: RequestInit = {
+        method,
+        headers: {
+          Authorization: `Bearer ${instance.token}`,
+          Token: instance.token,
+          "Content-Type": "application/json",
+        },
+      };
+
+      if (method !== "GET" && payload) {
+        fetchOptions.body = JSON.stringify(payload);
+      }
+
+      const response = await fetch(url, fetchOptions);
+      const responseText = await response.text();
+
+      wuzResponse = response;
+      rawText = responseText;
+
+      if (response.status !== 404) {
+        break;
+      }
     }
 
-    const wuzResponse = await fetch(url, fetchOptions);
-    const rawText = await wuzResponse.text();
-
-    let wuzData: unknown;
+    let wuzData: Record<string, unknown>;
     try {
       wuzData = JSON.parse(rawText);
     } catch {
-      wuzData = { raw: rawText, status: wuzResponse.status };
+      wuzData = {
+        raw: rawText,
+        status: wuzResponse?.status ?? 500,
+      };
+    }
+
+    if ((wuzResponse?.status ?? 500) === 404) {
+      wuzData.attemptedEndpoints = uniqueCandidates;
     }
 
     return new Response(JSON.stringify(wuzData), {
-      status: wuzResponse.status,
+      status: wuzResponse?.status ?? 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
