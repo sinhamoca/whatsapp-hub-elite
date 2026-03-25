@@ -278,7 +278,7 @@ export default function Instances() {
                 </div>
                 <div className="flex gap-1">
                   {!inst.webhook_url && inst.connected && (
-                    <Button variant="ghost" size="icon" title="Configurar Webhook" onClick={() => configureWebhook(inst.id)}>
+                    <Button variant="ghost" size="icon" title="Configurar Webhook" onClick={() => configureWebhookAndEvents(inst.id)}>
                       <Webhook className="h-4 w-4 text-accent-foreground" />
                     </Button>
                   )}
