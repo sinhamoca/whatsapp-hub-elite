@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Server, Wifi, WifiOff, Trash2, QrCode, Loader2, RefreshCw } from 'lucide-react';
+import { Plus, Server, Wifi, WifiOff, Trash2, QrCode, Loader2, RefreshCw, Webhook } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,6 +15,7 @@ interface Instance {
   phone: string;
   api_url: string;
   token: string;
+  webhook_url?: string;
   connected?: boolean;
   statusLoading?: boolean;
 }
@@ -47,6 +48,7 @@ export default function Instances() {
       phone: d.phone || '',
       api_url: d.api_url,
       token: d.token,
+      webhook_url: d.webhook_url || '',
       connected: undefined,
       statusLoading: true,
     }));
@@ -83,6 +85,25 @@ export default function Instances() {
     fetchInstances();
   }, [fetchInstances]);
 
+  const configureWebhook = async (instanceId: string) => {
+    const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/wuzapi-webhook`;
+    try {
+      await supabase.functions.invoke('wuzapi-proxy', {
+        body: {
+          instanceId,
+          endpoint: '/webhook',
+          method: 'POST',
+          payload: { webhookURL: webhookUrl },
+        },
+      });
+      // Update DB record
+      await supabase.from('instances').update({ webhook_url: webhookUrl }).eq('id', instanceId);
+      toast({ title: 'Webhook configurado!', description: 'Mensagens serão recebidas automaticamente.' });
+    } catch (err: any) {
+      console.error('Webhook config error:', err);
+    }
+  };
+
   const handleAdd = async () => {
     if (!form.name || !form.apiUrl || !form.token || !user) return;
     setSaving(true);
@@ -104,6 +125,11 @@ export default function Instances() {
     if (error) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
       return;
+    }
+
+    // Auto-configure webhook
+    if (data) {
+      await configureWebhook((data as any).id);
     }
 
     setForm({ name: '', phone: '', apiUrl: '', token: '' });
@@ -237,6 +263,11 @@ export default function Instances() {
                   <p className="text-sm text-muted-foreground truncate">{inst.phone}</p>
                 </div>
                 <div className="flex gap-1">
+                  {!inst.webhook_url && inst.connected && (
+                    <Button variant="ghost" size="icon" title="Configurar Webhook" onClick={() => configureWebhook(inst.id)}>
+                      <Webhook className="h-4 w-4 text-accent-foreground" />
+                    </Button>
+                  )}
                   {!inst.connected && !inst.statusLoading && (
                     <Button variant="ghost" size="icon" title="QR Code" onClick={() => handleQrCode(inst.id)}>
                       <QrCode className="h-4 w-4" />
