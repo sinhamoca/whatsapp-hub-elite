@@ -1,72 +1,231 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Send, Paperclip, Mic, Image, FileText, Video, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, Mic, Image, FileText, Video, ChevronDown, Loader2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 
 interface Message {
   id: string;
-  text: string;
-  time: string;
-  fromMe: boolean;
-  type: 'text' | 'image' | 'audio' | 'video' | 'document';
-  mediaUrl?: string;
+  body: string;
+  timestamp: string;
+  from_me: boolean;
+  msg_type: string;
+  media_url?: string;
 }
 
-const mockMessages: Message[] = [
-  { id: '1', text: 'Olá! Vi o anúncio do produto X', time: '14:20', fromMe: false, type: 'text' },
-  { id: '2', text: 'Olá Maria! Claro, posso ajudar. Qual produto te interessou?', time: '14:22', fromMe: true, type: 'text' },
-  { id: '3', text: 'O modelo azul, tamanho M. Qual o valor?', time: '14:25', fromMe: false, type: 'text' },
-  { id: '4', text: 'O modelo azul M está por R$ 89,90 com frete grátis para SP!', time: '14:28', fromMe: true, type: 'text' },
-  { id: '5', text: 'Ótimo! Aceita PIX?', time: '14:30', fromMe: false, type: 'text' },
-  { id: '6', text: 'Sim! Vou te enviar a chave agora', time: '14:31', fromMe: true, type: 'text' },
-  { id: '7', text: 'Gostaria de saber o preço do modelo vermelho também', time: '14:32', fromMe: false, type: 'text' },
-];
-
-const instances = [
-  { id: '1', name: 'Vendas', phone: '+55 11 99999-0001' },
-  { id: '2', name: 'Suporte', phone: '+55 11 99999-0002' },
-];
+interface ConversationInfo {
+  id: string;
+  jid: string;
+  contact_name: string;
+  instance_id: string;
+}
 
 export default function Chat() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [messages, setMessages] = useState(mockMessages);
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [conversation, setConversation] = useState<ConversationInfo | null>(null);
+  const [instances, setInstances] = useState<{ id: string; name: string; phone: string }[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [text, setText] = useState('');
-  const [selectedInstance, setSelectedInstance] = useState(instances[0]);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const fetchData = useCallback(async () => {
+    if (!user || !id) return;
+
+    const [convRes, instRes] = await Promise.all([
+      supabase.from('conversations').select('id, jid, contact_name, instance_id').eq('id', id).single(),
+      supabase.from('instances').select('id, name, phone'),
+    ]);
+
+    if (convRes.error || !convRes.data) {
+      navigate('/');
+      return;
+    }
+
+    setConversation(convRes.data as any);
+    setSelectedInstanceId(convRes.data.instance_id);
+    setInstances((instRes.data || []) as any);
+
+    const msgRes = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', id)
+      .order('timestamp', { ascending: true });
+
+    setMessages((msgRes.data || []) as any);
+    setLoading(false);
+
+    // Mark as read
+    await supabase
+      .from('conversations')
+      .update({ unread_count: 0 })
+      .eq('id', id);
+  }, [user, id]);
+
+  useEffect(() => {
+    fetchData();
+
+    // Realtime for new messages
+    const channel = supabase
+      .channel(`messages-${id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${id}` },
+        (payload) => {
+          setMessages(prev => [...prev, payload.new as any]);
+          // Mark read
+          supabase.from('conversations').update({ unread_count: 0 }).eq('id', id);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchData, id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = () => {
-    if (!text.trim()) return;
-    setMessages([...messages, {
-      id: Date.now().toString(),
-      text: text.trim(),
-      time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-      fromMe: true,
-      type: 'text',
-    }]);
-    setText('');
+  const handleSend = async () => {
+    if (!text.trim() || !conversation || sending) return;
+    setSending(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('wuzapi-proxy', {
+        body: {
+          instanceId: selectedInstanceId,
+          endpoint: '/chat/send/text',
+          method: 'POST',
+          payload: {
+            Phone: conversation.jid.split('@')[0],
+            Body: text.trim(),
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      // Add message locally
+      const newMsg: Message = {
+        id: Date.now().toString(),
+        body: text.trim(),
+        timestamp: new Date().toISOString(),
+        from_me: true,
+        msg_type: 'text',
+      };
+      setMessages(prev => [...prev, newMsg]);
+
+      // Save to DB
+      await supabase.from('messages').insert({
+        user_id: user!.id,
+        instance_id: selectedInstanceId,
+        conversation_id: conversation.id,
+        message_id: (data as any)?.data?.Id || '',
+        jid: conversation.jid,
+        from_me: true,
+        body: text.trim(),
+        msg_type: 'text',
+        timestamp: new Date().toISOString(),
+      });
+
+      // Update conversation
+      await supabase.from('conversations').update({
+        last_message: text.trim().substring(0, 200),
+        last_message_at: new Date().toISOString(),
+      }).eq('id', conversation.id);
+
+      setText('');
+    } catch (err: any) {
+      toast({ title: 'Erro ao enviar', description: err.message, variant: 'destructive' });
+    }
+    setSending(false);
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    setMessages([...messages, {
-      id: Date.now().toString(),
-      text: `📎 ${file.name}`,
-      time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-      fromMe: true,
-      type: 'document',
-    }]);
+    if (!file || !conversation) return;
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(',')[1];
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+      const isAudio = file.type.startsWith('audio/');
+
+      let endpoint = '/chat/send/document';
+      let payload: any = {
+        Phone: conversation.jid.split('@')[0],
+        Document: `data:${file.type};base64,${base64}`,
+        FileName: file.name,
+      };
+
+      if (isImage) {
+        endpoint = '/chat/send/image';
+        payload = { Phone: conversation.jid.split('@')[0], Image: `data:${file.type};base64,${base64}`, Caption: file.name };
+      } else if (isVideo) {
+        endpoint = '/chat/send/video';
+        payload = { Phone: conversation.jid.split('@')[0], Video: `data:${file.type};base64,${base64}`, Caption: file.name };
+      } else if (isAudio) {
+        endpoint = '/chat/send/audio';
+        payload = { Phone: conversation.jid.split('@')[0], Audio: `data:${file.type};base64,${base64}` };
+      }
+
+      try {
+        await supabase.functions.invoke('wuzapi-proxy', {
+          body: { instanceId: selectedInstanceId, endpoint, method: 'POST', payload },
+        });
+
+        const typeLabel = isImage ? '📷 Imagem' : isVideo ? '🎥 Vídeo' : isAudio ? '🎵 Áudio' : `📄 ${file.name}`;
+        const newMsg: Message = {
+          id: Date.now().toString(),
+          body: typeLabel,
+          timestamp: new Date().toISOString(),
+          from_me: true,
+          msg_type: isImage ? 'image' : isVideo ? 'video' : isAudio ? 'audio' : 'document',
+        };
+        setMessages(prev => [...prev, newMsg]);
+
+        await supabase.from('messages').insert({
+          user_id: user!.id,
+          instance_id: selectedInstanceId,
+          conversation_id: conversation.id,
+          jid: conversation.jid,
+          from_me: true,
+          body: typeLabel,
+          msg_type: newMsg.msg_type,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err: any) {
+        toast({ title: 'Erro ao enviar mídia', description: err.message, variant: 'destructive' });
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
+
+  const formatTime = (ts: string) => new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  const selectedInstance = instances.find(i => i.id === selectedInstanceId);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col h-screen md:h-auto">
@@ -76,16 +235,16 @@ export default function Chat() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold text-foreground">
-          MS
+          {conversation?.contact_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '??'}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm text-foreground">Maria Silva</p>
-          <p className="text-xs text-muted-foreground">Online</p>
+          <p className="font-medium text-sm text-foreground">{conversation?.contact_name || 'Chat'}</p>
+          <p className="text-xs text-muted-foreground">{conversation?.jid?.split('@')[0]}</p>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="text-xs gap-1">
-              {selectedInstance.name}
+              {selectedInstance?.name || 'Instância'}
               <ChevronDown className="h-3 w-3" />
             </Button>
           </DropdownMenuTrigger>
@@ -93,8 +252,8 @@ export default function Chat() {
             {instances.map(inst => (
               <DropdownMenuItem
                 key={inst.id}
-                onClick={() => setSelectedInstance(inst)}
-                className={cn(inst.id === selectedInstance.id && 'bg-primary/10 text-primary')}
+                onClick={() => setSelectedInstanceId(inst.id)}
+                className={cn(inst.id === selectedInstanceId && 'bg-primary/10 text-primary')}
               >
                 <div>
                   <p className="text-sm font-medium">{inst.name}</p>
@@ -108,25 +267,34 @@ export default function Chat() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
-        {messages.map((msg, i) => (
-          <motion.div
-            key={msg.id}
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.02 }}
-            className={cn('flex', msg.fromMe ? 'justify-end' : 'justify-start')}
-          >
-            <div className={cn(
-              'max-w-[80%] md:max-w-[60%] rounded-2xl px-4 py-2',
-              msg.fromMe
-                ? 'bg-chat-outgoing rounded-br-md'
-                : 'bg-chat-incoming rounded-bl-md'
-            )}>
-              <p className="text-sm text-foreground">{msg.text}</p>
-              <p className="text-[10px] text-muted-foreground text-right mt-1">{msg.time}</p>
-            </div>
-          </motion.div>
-        ))}
+        {messages.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">
+            Nenhuma mensagem ainda
+          </div>
+        ) : (
+          messages.map((msg, i) => (
+            <motion.div
+              key={msg.id}
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: Math.min(i * 0.02, 0.5) }}
+              className={cn('flex', msg.from_me ? 'justify-end' : 'justify-start')}
+            >
+              <div className={cn(
+                'max-w-[80%] md:max-w-[60%] rounded-2xl px-4 py-2',
+                msg.from_me
+                  ? 'bg-chat-outgoing rounded-br-md'
+                  : 'bg-chat-incoming rounded-bl-md'
+              )}>
+                {msg.media_url && msg.msg_type === 'image' && (
+                  <img src={msg.media_url} alt="Imagem" className="rounded-lg mb-1 max-w-full" />
+                )}
+                <p className="text-sm text-foreground">{msg.body}</p>
+                <p className="text-[10px] text-muted-foreground text-right mt-1">{formatTime(msg.timestamp)}</p>
+              </div>
+            </motion.div>
+          ))
+        )}
         <div ref={bottomRef} />
       </div>
 
@@ -165,15 +333,15 @@ export default function Chat() {
             placeholder="Digite uma mensagem..."
             value={text}
             onChange={e => setText(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
             className="bg-secondary/50 border-border"
           />
-          <Button size="icon" onClick={handleSend} disabled={!text.trim()}>
-            <Send className="h-4 w-4" />
+          <Button size="icon" onClick={handleSend} disabled={!text.trim() || sending}>
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </div>
         <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
-          Respondendo via <span className="text-primary font-medium">{selectedInstance.name}</span> ({selectedInstance.phone})
+          Respondendo via <span className="text-primary font-medium">{selectedInstance?.name || '...'}</span> ({selectedInstance?.phone || '...'})
         </p>
       </div>
     </div>
