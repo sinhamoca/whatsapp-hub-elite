@@ -193,6 +193,37 @@ Deno.serve(async (req) => {
       }
     };
 
+    const cleanBase64 = (value: unknown) => {
+      const raw = String(value || "").trim();
+      if (!raw) return "";
+      const withoutPrefix = raw.includes("base64,") ? raw.split("base64,")[1] : raw;
+      return withoutPrefix.replace(/\s/g, "");
+    };
+
+    const extractBase64FromDownloadResponse = (data: any) => {
+      const candidates = [
+        data,
+        data?.data,
+        data?.Data,
+        data?.base64,
+        data?.Base64,
+        data?.data?.base64,
+        data?.data?.Base64,
+        data?.data?.Data,
+        data?.media,
+        data?.data?.media,
+      ];
+
+      for (const candidate of candidates) {
+        if (typeof candidate === "string") {
+          const cleaned = cleanBase64(candidate);
+          if (cleaned) return cleaned;
+        }
+      }
+
+      return "";
+    };
+
     // Parse event with compatibility for multiple payload shapes
     const event = eventData.event || eventData.data || eventData;
     const info = event?.Info || event?.info || eventData?.info || {};
@@ -417,7 +448,6 @@ Deno.serve(async (req) => {
     }
 
     if (["image", "video", "audio", "document", "sticker"].includes(msgType) && !mediaUrl) {
-      // Try to download media via WuzAPI download endpoint
       const mediaMessage =
         message?.ImageMessage || message?.imageMessage ||
         message?.VideoMessage || message?.videoMessage ||
@@ -426,22 +456,21 @@ Deno.serve(async (req) => {
         message?.StickerMessage || message?.stickerMessage ||
         null;
 
-      const dlUrl = pickFirstString(
-        mediaMessage?.URL, mediaMessage?.Url, mediaMessage?.url,
-        mediaMessage?.DirectPath, mediaMessage?.directPath,
+      const mediaPublicUrl = pickFirstString(
+        mediaMessage?.URL,
+        mediaMessage?.Url,
+        mediaMessage?.url,
       );
-      const mediaKey = pickFirstString(
-        mediaMessage?.MediaKey, mediaMessage?.mediaKey,
+      const directPath = pickFirstString(
+        mediaMessage?.DirectPath,
+        mediaMessage?.directPath,
       );
-      const fileSHA256 = pickFirstString(
-        mediaMessage?.FileSHA256, mediaMessage?.fileSHA256, mediaMessage?.fileSha256,
-      );
-      const fileEncSHA256 = pickFirstString(
-        mediaMessage?.FileEncSHA256, mediaMessage?.fileEncSHA256, mediaMessage?.fileEncSha256,
-      );
+      const mediaKey = pickFirstString(mediaMessage?.MediaKey, mediaMessage?.mediaKey);
+      const fileSHA256 = pickFirstString(mediaMessage?.FileSHA256, mediaMessage?.fileSHA256, mediaMessage?.fileSha256);
+      const fileEncSHA256 = pickFirstString(mediaMessage?.FileEncSHA256, mediaMessage?.fileEncSHA256, mediaMessage?.fileEncSha256);
       const fileLength = Number(mediaMessage?.FileLength || mediaMessage?.fileLength || 0);
 
-      if (dlUrl && mediaKey) {
+      if (mediaPublicUrl || directPath) {
         const endpointMap: Record<string, string> = {
           image: "/chat/downloadimage",
           video: "/chat/downloadvideo",
@@ -452,56 +481,127 @@ Deno.serve(async (req) => {
         const dlEndpoint = endpointMap[msgType] || "/chat/downloadimage";
         const apiUrl = instanceApiUrl.replace(/\/+$/, "");
 
-        try {
-          const dlPayload: any = {
-            Url: dlUrl,
+        const payloadAttempts: Record<string, unknown>[] = [
+          {
+            Url: mediaPublicUrl || directPath,
             MediaKey: mediaKey,
             Mimetype: mediaMime || "application/octet-stream",
-          };
-          if (fileSHA256) dlPayload.FileSHA256 = fileSHA256;
-          if (fileEncSHA256) dlPayload.FileEncSHA256 = fileEncSHA256;
-          if (fileLength) dlPayload.FileLength = fileLength;
+            FileSHA256: fileSHA256,
+            FileEncSHA256: fileEncSHA256,
+            FileLength: fileLength || undefined,
+            DirectPath: directPath || undefined,
+          },
+          {
+            Url: mediaPublicUrl || directPath,
+            Mimetype: mediaMime || "application/octet-stream",
+            FileLength: fileLength || undefined,
+            DirectPath: directPath || undefined,
+          },
+          {
+            Url: mediaPublicUrl || directPath,
+            Mimetype: mediaMime || "application/octet-stream",
+            DirectPath: directPath || undefined,
+          },
+        ];
 
-          console.log("Downloading media from WuzAPI:", dlEndpoint);
+        let downloadedBase64 = "";
 
-          const dlResp = await fetch(`${apiUrl}${dlEndpoint}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Token: instance.token },
-            body: JSON.stringify(dlPayload),
-          });
+        for (const [index, attemptPayloadRaw] of payloadAttempts.entries()) {
+          if (downloadedBase64) break;
 
-          if (dlResp.ok) {
-            const dlData = await dlResp.json();
-            const dlBase64 = dlData?.Data || dlData?.data || "";
-            if (dlBase64 && typeof dlBase64 === "string") {
-              const cleanB64 = dlBase64.includes("base64,") ? dlBase64.split("base64,")[1] : dlBase64;
-              const sizeEst = cleanB64.length * 0.75;
-              if (sizeEst <= 5 * 1024 * 1024) {
-                const mime = mediaMime || "application/octet-stream";
-                const ext = mime.split("/")[1]?.split(";")[0] || "bin";
-                const fp = `${instanceId}/${Date.now()}_${msgId || crypto.randomUUID()}.${ext}`;
-                const bin = atob(cleanB64);
-                const u8 = new Uint8Array(bin.length);
-                for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-                const { error: upErr } = await supabase.storage.from("media").upload(fp, u8.buffer, { contentType: mime, upsert: true });
-                if (!upErr) {
-                  const { data: pubUrl } = supabase.storage.from("media").getPublicUrl(fp);
-                  mediaUrl = pubUrl?.publicUrl || "";
-                  console.log("Media downloaded & uploaded:", fp);
-                } else { console.error("Storage upload error:", upErr.message); }
-              } else { console.warn("Downloaded media too large:", Math.round(sizeEst / 1024), "KB"); }
+          const attemptPayload = Object.fromEntries(
+            Object.entries(attemptPayloadRaw).filter(([, value]) => {
+              const text = String(value ?? "").trim();
+              return text.length > 0;
+            }),
+          );
+
+          try {
+            console.log("Downloading media from WuzAPI:", dlEndpoint, "attempt", index + 1);
+
+            const dlResp = await fetch(`${apiUrl}${dlEndpoint}`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Token: instance.token,
+                Authorization: instance.token,
+              },
+              body: JSON.stringify(attemptPayload),
+            });
+
+            const respText = await dlResp.text();
+            let parsed: any = null;
+            try {
+              parsed = respText ? JSON.parse(respText) : null;
+            } catch {
+              parsed = respText;
+            }
+
+            if (!dlResp.ok) {
+              console.error("WuzAPI download failed:", dlResp.status, respText.slice(0, 300));
+              continue;
+            }
+
+            const apiCode = Number(parsed?.code || 200);
+            const apiSuccess = parsed?.success;
+            if (apiCode >= 400 || apiSuccess === false || parsed?.error) {
+              console.warn("WuzAPI download returned error payload", {
+                apiCode,
+                apiSuccess,
+                error: parsed?.error || parsed?.message || "",
+              });
+              continue;
+            }
+
+            downloadedBase64 = extractBase64FromDownloadResponse(parsed || respText);
+
+            if (!downloadedBase64) {
+              console.warn("WuzAPI download without base64 payload", {
+                responseType: typeof parsed,
+                responseKeys: parsed && typeof parsed === "object" ? Object.keys(parsed) : [],
+              });
+            }
+          } catch (dlErr) {
+            console.error("Media download error:", dlErr);
+          }
+        }
+
+        if (downloadedBase64) {
+          const sizeEst = downloadedBase64.length * 0.75;
+          if (sizeEst <= 12 * 1024 * 1024) {
+            try {
+              const mime = mediaMime || "application/octet-stream";
+              const ext = mime.split("/")[1]?.split(";")[0] || "bin";
+              const fp = `${instanceId}/${Date.now()}_${msgId || crypto.randomUUID()}.${ext}`;
+              const bin = atob(downloadedBase64);
+              const u8 = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+              const { error: upErr } = await supabase.storage.from("media").upload(fp, u8.buffer, {
+                contentType: mime,
+                upsert: true,
+              });
+
+              if (!upErr) {
+                const { data: pubUrl } = supabase.storage.from("media").getPublicUrl(fp);
+                mediaUrl = pubUrl?.publicUrl || "";
+                console.log("Media downloaded & uploaded:", fp);
+              } else {
+                console.error("Storage upload error:", upErr.message);
+              }
+            } catch (uploadErr) {
+              console.error("Downloaded media upload error:", uploadErr);
             }
           } else {
-            console.error("WuzAPI download failed:", dlResp.status, await dlResp.text().catch(() => ""));
+            console.warn("Downloaded media too large:", Math.round(sizeEst / 1024), "KB");
           }
-        } catch (dlErr) { console.error("Media download error:", dlErr); }
+        }
       } else {
-      console.warn("Media sem URL/base64", {
-        msgType,
-        eventKeys: Object.keys(eventData || {}),
-        messageKeys: Object.keys(message || {}),
-        mediaMessageKeys: Object.keys(mediaMessage || {}),
-      });
+        console.warn("Media sem URL/base64", {
+          msgType,
+          eventKeys: Object.keys(eventData || {}),
+          messageKeys: Object.keys(message || {}),
+          mediaMessageKeys: Object.keys(mediaMessage || {}),
+        });
       }
     }
 
