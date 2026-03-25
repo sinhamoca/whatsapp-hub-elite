@@ -73,6 +73,17 @@ export default function Instances() {
           i.id === instanceId ? { ...i, connected: isConnected, statusLoading: false } : i
         )
       );
+
+      // Auto-sync contacts when connected
+      if (isConnected) {
+        supabase.functions.invoke('sync-contacts', {
+          body: { instanceId },
+        }).then(({ data: syncData }) => {
+          if (syncData?.contactsSynced) {
+            toast({ title: 'Contatos sincronizados!', description: `${syncData.contactsSynced} contatos e ${syncData.avatarsSynced || 0} fotos atualizados.` });
+          }
+        }).catch(() => {});
+      }
     } catch {
       setInstances(prev =>
         prev.map(i =>
