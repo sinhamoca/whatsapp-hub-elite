@@ -263,23 +263,7 @@ Deno.serve(async (req) => {
 
     console.log("Processing:", { remoteJid, msgType, fromMe, bodyLen: body?.length, hasMedia: !!mediaUrl });
 
-    // Skip group messages (JIDs ending with @g.us) and broadcast
-    if (remoteJid.endsWith("@g.us") || remoteJid === "status@broadcast") {
-      return new Response(JSON.stringify({ ok: true, type: "group-or-broadcast" }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Skip old messages (older than 24 hours)
-    const messageDate = new Date(timestamp);
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    if (messageDate < twentyFourHoursAgo) {
-      return new Response(JSON.stringify({ ok: true, type: "old-message" }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // No filters here - filters should be configured directly in WuzAPI webhook settings
 
     if (!remoteJid || !body) {
       // Non-message event (ReadReceipt, Presence, etc.) - just acknowledge
