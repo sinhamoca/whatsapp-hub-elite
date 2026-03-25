@@ -17,6 +17,7 @@ interface Message {
   from_me: boolean;
   msg_type: string;
   media_url?: string;
+  media_mime?: string;
 }
 
 interface ConversationInfo {
