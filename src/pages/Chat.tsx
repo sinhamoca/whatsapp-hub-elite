@@ -25,6 +25,7 @@ interface ConversationInfo {
   jid: string;
   contact_name: string;
   instance_id: string;
+  avatar_url?: string;
 }
 
 export default function Chat() {
