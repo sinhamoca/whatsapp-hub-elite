@@ -77,9 +77,7 @@ Deno.serve(async (req) => {
     // Determine message details
     const msgId = info?.ID || info?.Id || info?.id || "";
     const fromMe = info?.IsFromMe ?? info?.FromMe ?? info?.fromMe ?? false;
-    const remoteJid = info?.RemoteJid || info?.Chat || info?.Sender?.User
-      ? `${info?.Sender?.User}@s.whatsapp.net`
-      : info?.RemoteJid || "";
+    const remoteJid = info?.RemoteJid || info?.Chat || (info?.Sender?.User ? `${info.Sender.User}@s.whatsapp.net` : "");
     const pushName = info?.PushName || info?.pushName || "";
     const timestamp = info?.Timestamp
       ? new Date(info.Timestamp * 1000).toISOString()
