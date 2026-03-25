@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Server, Wifi, WifiOff, Trash2, QrCode, Loader2, RefreshCw, Webhook } from 'lucide-react';
+import { Plus, Server, Wifi, WifiOff, Trash2, QrCode, Loader2, RefreshCw, Webhook, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -26,9 +26,11 @@ export default function Instances() {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialog, setEditDialog] = useState<{ open: boolean; instance: Instance | null }>({ open: false, instance: null });
   const [qrDialog, setQrDialog] = useState<{ open: boolean; instanceId: string; qr: string }>({ open: false, instanceId: '', qr: '' });
   const [qrLoading, setQrLoading] = useState(false);
   const [form, setForm] = useState({ name: '', phone: '', apiUrl: '', token: '' });
+  const [editForm, setEditForm] = useState({ name: '', phone: '', apiUrl: '', token: '' });
   const [saving, setSaving] = useState(false);
 
   const fetchInstances = useCallback(async () => {
@@ -54,7 +56,6 @@ export default function Instances() {
     }));
     setInstances(mapped);
     setLoading(false);
-    // Check status for each
     mapped.forEach((inst: Instance) => checkStatus(inst.id));
   }, [user]);
 
@@ -98,23 +99,20 @@ export default function Instances() {
         ? `${webhookBaseUrl}?token=${encodeURIComponent(instanceRow.token)}`
         : webhookBaseUrl;
 
-      // Configure webhook URL and events in parallel
-      await Promise.all([
-        supabase.functions.invoke('wuzapi-proxy', {
-          body: {
-            instanceId,
-            endpoint: '/webhook',
-            method: 'POST',
-            payload: { webhookURL: webhookUrl, events: ['Message'] },
-          },
-        }),
-      ]);
+      await supabase.functions.invoke('wuzapi-proxy', {
+        body: {
+          instanceId,
+          endpoint: '/webhook',
+          method: 'POST',
+          payload: { webhookURL: webhookUrl, events: ['Message'] },
+        },
+      });
 
       await supabase.from('instances').update({ webhook_url: webhookUrl }).eq('id', instanceId);
-      toast({ title: 'Webhook e eventos configurados!', description: 'Apenas mensagens serão recebidas automaticamente.' });
+      toast({ title: 'Webhook configurado!', description: 'Apenas mensagens serão recebidas.' });
     } catch (err: any) {
-      console.error('Webhook/events config error:', err);
-      toast({ title: 'Aviso', description: 'Instância salva, mas houve erro ao configurar webhook. Tente reconfigurar.', variant: 'destructive' });
+      console.error('Webhook config error:', err);
+      toast({ title: 'Aviso', description: 'Erro ao configurar webhook.', variant: 'destructive' });
     }
   };
 
@@ -141,7 +139,6 @@ export default function Instances() {
       return;
     }
 
-    // Auto-configure webhook
     if (data) {
       await configureWebhookAndEvents((data as any).id);
     }
@@ -149,6 +146,37 @@ export default function Instances() {
     setForm({ name: '', phone: '', apiUrl: '', token: '' });
     setDialogOpen(false);
     toast({ title: 'Instância adicionada!' });
+    fetchInstances();
+  };
+
+  const openEdit = (inst: Instance) => {
+    setEditForm({ name: inst.name, phone: inst.phone, apiUrl: inst.api_url, token: inst.token });
+    setEditDialog({ open: true, instance: inst });
+  };
+
+  const handleEdit = async () => {
+    if (!editDialog.instance || !editForm.name || !editForm.apiUrl || !editForm.token) return;
+    setSaving(true);
+
+    const { error } = await supabase
+      .from('instances')
+      .update({
+        name: editForm.name,
+        phone: editForm.phone,
+        api_url: editForm.apiUrl,
+        token: editForm.token,
+      })
+      .eq('id', editDialog.instance.id);
+
+    setSaving(false);
+
+    if (error) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+      return;
+    }
+
+    setEditDialog({ open: false, instance: null });
+    toast({ title: 'Instância atualizada!' });
     fetchInstances();
   };
 
@@ -173,7 +201,7 @@ export default function Instances() {
       const qrCode = (data as any)?.QRCode ?? (data as any)?.qrCode ?? (data as any)?.qrcode ?? (data as any)?.data?.QRCode ?? (data as any)?.data?.qrCode ?? (data as any)?.data?.qrcode;
 
       if (error || !qrCode) {
-        toast({ title: 'Erro', description: 'Não foi possível obter o QR Code. Verifique se a instância está desconectada.', variant: 'destructive' });
+        toast({ title: 'Erro', description: 'Não foi possível obter o QR Code.', variant: 'destructive' });
         setQrDialog(prev => ({ ...prev, open: false }));
       } else {
         setQrDialog(prev => ({ ...prev, qr: String(qrCode).replace(/^data:image\/png;base64,/, '') }));
@@ -287,6 +315,9 @@ export default function Instances() {
                       <QrCode className="h-4 w-4" />
                     </Button>
                   )}
+                  <Button variant="ghost" size="icon" title="Editar" onClick={() => openEdit(inst)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
                   <Button variant="ghost" size="icon" onClick={() => handleDelete(inst.id)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
@@ -296,6 +327,37 @@ export default function Instances() {
           </AnimatePresence>
         </div>
       )}
+
+      {/* Edit Instance Dialog */}
+      <Dialog open={editDialog.open} onOpenChange={(open) => setEditDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle>Editar Instância</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} className="bg-secondary/50" />
+            </div>
+            <div className="space-y-2">
+              <Label>Telefone</Label>
+              <Input value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} className="bg-secondary/50" />
+            </div>
+            <div className="space-y-2">
+              <Label>URL da WuzAPI</Label>
+              <Input value={editForm.apiUrl} onChange={e => setEditForm({ ...editForm, apiUrl: e.target.value })} className="bg-secondary/50" />
+            </div>
+            <div className="space-y-2">
+              <Label>Token</Label>
+              <Input type="password" value={editForm.token} onChange={e => setEditForm({ ...editForm, token: e.target.value })} className="bg-secondary/50" />
+            </div>
+            <Button className="w-full" onClick={handleEdit} disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              Salvar alterações
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* QR Code Dialog */}
       <Dialog open={qrDialog.open} onOpenChange={(open) => setQrDialog(prev => ({ ...prev, open }))}>
