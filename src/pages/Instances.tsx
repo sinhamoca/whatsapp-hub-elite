@@ -130,7 +130,7 @@ export default function Instances() {
         body: { instanceId, endpoint: '/session/qr', method: 'GET' },
       });
 
-      const qrCode = (data as any)?.QRCode ?? (data as any)?.qrCode ?? (data as any)?.data?.QRCode ?? (data as any)?.data?.qrCode;
+      const qrCode = (data as any)?.QRCode ?? (data as any)?.qrCode ?? (data as any)?.qrcode ?? (data as any)?.data?.QRCode ?? (data as any)?.data?.qrCode ?? (data as any)?.data?.qrcode;
 
       if (error || !qrCode) {
         toast({ title: 'Erro', description: 'Não foi possível obter o QR Code. Verifique se a instância está desconectada.', variant: 'destructive' });
