@@ -12,6 +12,8 @@ Deno.serve(async (req) => {
   }
 
   try {
+    console.log("Webhook received:", req.method, new Date().toISOString());
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -218,39 +220,48 @@ Deno.serve(async (req) => {
       msgType = "sticker";
     }
 
-    // Upload base64 media to storage bucket
+    // Upload base64 media to storage bucket (skip if too large to avoid timeouts)
     const rawBase64 = eventData?.base64 || eventData?.data?.base64;
-    if (rawBase64) {
-      try {
-        const mime = eventData?.mimeType || eventData?.data?.mimeType || mediaMime || "application/octet-stream";
-        const ext = mime.split("/")[1]?.split(";")[0] || "bin";
-        const filePath = `${instanceId}/${Date.now()}_${msgId || crypto.randomUUID()}.${ext}`;
+    if (rawBase64 && typeof rawBase64 === "string") {
+      const sizeEstimate = rawBase64.length * 0.75; // approximate bytes
+      const MAX_SIZE = 5 * 1024 * 1024; // 5MB limit
 
-        // Decode base64 to Uint8Array
-        const binaryStr = atob(rawBase64);
-        const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i++) {
-          bytes[i] = binaryStr.charCodeAt(i);
+      if (sizeEstimate <= MAX_SIZE) {
+        try {
+          const mime = eventData?.mimeType || eventData?.data?.mimeType || mediaMime || "application/octet-stream";
+          const ext = mime.split("/")[1]?.split(";")[0] || "bin";
+          const filePath = `${instanceId}/${Date.now()}_${msgId || crypto.randomUUID()}.${ext}`;
+
+          const binaryStr = atob(rawBase64);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+
+          const { error: uploadError } = await supabase.storage
+            .from("media")
+            .upload(filePath, bytes.buffer, { contentType: mime, upsert: true });
+
+          if (!uploadError) {
+            const { data: publicUrlData } = supabase.storage.from("media").getPublicUrl(filePath);
+            mediaUrl = publicUrlData?.publicUrl || "";
+            console.log("Media uploaded:", filePath);
+          } else {
+            console.error("Media upload error:", uploadError.message);
+          }
+        } catch (e) {
+          console.error("Base64 processing error:", e);
         }
-
-        const { error: uploadError } = await supabase.storage
-          .from("media")
-          .upload(filePath, bytes.buffer, { contentType: mime, upsert: true });
-
-        if (!uploadError) {
-          const { data: publicUrlData } = supabase.storage.from("media").getPublicUrl(filePath);
-          mediaUrl = publicUrlData?.publicUrl || "";
-        } else {
-          console.error("Media upload error:", uploadError.message);
-        }
-      } catch (e) {
-        console.error("Base64 processing error:", e);
+      } else {
+        console.warn("Media too large, skipping upload:", Math.round(sizeEstimate / 1024), "KB");
       }
     }
 
     if (eventData?.s3?.url || eventData?.data?.s3?.url) {
       mediaUrl = eventData?.s3?.url || eventData?.data?.s3?.url;
     }
+
+    console.log("Processing:", { remoteJid, msgType, fromMe, bodyLen: body?.length, hasMedia: !!mediaUrl });
 
     // Skip group messages (JIDs ending with @g.us) and broadcast
     if (remoteJid.endsWith("@g.us") || remoteJid === "status@broadcast") {
