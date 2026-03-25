@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Server, Wifi, WifiOff, Trash2, QrCode, Loader2, RefreshCw } from 'lucide-react';
+import { Plus, Server, Wifi, WifiOff, Trash2, QrCode, Loader2, RefreshCw, Webhook } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
