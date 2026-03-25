@@ -246,6 +246,20 @@ Deno.serve(async (req) => {
 
     const pushName = info?.PushName || info?.pushName || eventData?.pushName || "";
 
+    // Extract real phone number (especially for @lid JIDs)
+    const participantJid = pickFirstString(
+      info?.Sender?.User,
+      info?.sender?.user,
+      info?.Participant,
+      info?.participant,
+      eventData?.participant,
+      eventData?.data?.participant,
+    );
+    // If remoteJid is @lid, try to get phone from sender/participant
+    const realPhone = remoteJid.endsWith("@lid") && participantJid
+      ? participantJid
+      : remoteJid.split("@")[0];
+
     const rawTimestamp = info?.Timestamp ?? info?.timestamp ?? eventData?.timestamp;
     const parsedTimestamp = Number(rawTimestamp);
     const timestamp = Number.isFinite(parsedTimestamp)
@@ -687,7 +701,7 @@ Deno.serve(async (req) => {
         jid: remoteJid,
         push_name: pushName,
         name: contactName,
-        phone: remoteJid.split("@")[0],
+        phone: realPhone,
       },
       { onConflict: "instance_id,jid" }
     );

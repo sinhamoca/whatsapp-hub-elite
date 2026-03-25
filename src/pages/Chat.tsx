@@ -34,6 +34,7 @@ export default function Chat() {
   const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversation, setConversation] = useState<ConversationInfo | null>(null);
+  const [contactPhone, setContactPhone] = useState('');
   const [instances, setInstances] = useState<{ id: string; name: string; phone: string }[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [text, setText] = useState('');
@@ -72,6 +73,22 @@ export default function Chat() {
     setConversation(convRes.data as any);
     setSelectedInstanceId(convRes.data.instance_id);
     setInstances((instRes.data || []) as any);
+
+    // Fetch contact phone
+    const { data: contactData } = await supabase
+      .from('contacts')
+      .select('phone')
+      .eq('jid', convRes.data.jid)
+      .eq('instance_id', convRes.data.instance_id)
+      .maybeSingle();
+    
+    const phone = contactData?.phone || '';
+    // Only set if it looks like a real phone (not a LID)
+    if (phone && phone.length <= 15 && /^\d+$/.test(phone)) {
+      setContactPhone(phone);
+    } else {
+      setContactPhone('');
+    }
 
     const msgRes = await supabase
       .from('messages')
@@ -323,7 +340,7 @@ export default function Chat() {
         <div className="flex-1 min-w-0">
           <p className="font-medium text-sm text-foreground">{conversation?.contact_name || 'Chat'}</p>
           <p className="text-xs text-muted-foreground">
-            {conversation?.jid?.endsWith('@lid') ? '' : conversation?.jid?.split('@')[0]}
+            {contactPhone || (conversation?.jid?.endsWith('@lid') ? '' : conversation?.jid?.split('@')[0])}
           </p>
         </div>
         <DropdownMenu>
