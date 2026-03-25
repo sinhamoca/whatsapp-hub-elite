@@ -12,6 +12,8 @@ Deno.serve(async (req) => {
   }
 
   try {
+    console.log("Webhook received:", req.method, new Date().toISOString());
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
