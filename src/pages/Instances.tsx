@@ -15,6 +15,7 @@ interface Instance {
   phone: string;
   api_url: string;
   token: string;
+  webhook_url?: string;
   connected?: boolean;
   statusLoading?: boolean;
 }
