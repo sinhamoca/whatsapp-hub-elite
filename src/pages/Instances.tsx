@@ -143,7 +143,7 @@ export default function Instances() {
 
     // Auto-configure webhook
     if (data) {
-      await configureWebhook((data as any).id);
+      await configureWebhookAndEvents((data as any).id);
     }
 
     setForm({ name: '', phone: '', apiUrl: '', token: '' });
