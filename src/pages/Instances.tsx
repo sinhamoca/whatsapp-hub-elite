@@ -86,8 +86,18 @@ export default function Instances() {
   }, [fetchInstances]);
 
   const configureWebhook = async (instanceId: string) => {
-    const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/wuzapi-webhook`;
     try {
+      const { data: instanceRow } = await supabase
+        .from('instances')
+        .select('token')
+        .eq('id', instanceId)
+        .single();
+
+      const webhookBaseUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/wuzapi-webhook`;
+      const webhookUrl = instanceRow?.token
+        ? `${webhookBaseUrl}?token=${encodeURIComponent(instanceRow.token)}`
+        : webhookBaseUrl;
+
       await supabase.functions.invoke('wuzapi-proxy', {
         body: {
           instanceId,
@@ -96,7 +106,7 @@ export default function Instances() {
           payload: { webhookURL: webhookUrl },
         },
       });
-      // Update DB record
+
       await supabase.from('instances').update({ webhook_url: webhookUrl }).eq('id', instanceId);
       toast({ title: 'Webhook configurado!', description: 'Mensagens serão recebidas automaticamente.' });
     } catch (err: any) {
