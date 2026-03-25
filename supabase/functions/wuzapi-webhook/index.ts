@@ -254,11 +254,13 @@ Deno.serve(async (req) => {
       info?.participant,
       eventData?.participant,
       eventData?.data?.participant,
-    );
-    // If remoteJid is @lid, try to get phone from sender/participant
-    const realPhone = remoteJid.endsWith("@lid") && participantJid
-      ? participantJid
-      : remoteJid.split("@")[0];
+    ).replace(/\D/g, "");
+
+    const jidLocalPart = remoteJid.split("@")[0] || "";
+    const isLidJid = remoteJid.endsWith("@lid");
+    const realPhone = isLidJid
+      ? (participantJid && participantJid !== jidLocalPart ? participantJid : "")
+      : jidLocalPart;
 
     const rawTimestamp = info?.Timestamp ?? info?.timestamp ?? eventData?.timestamp;
     const parsedTimestamp = Number(rawTimestamp);
