@@ -34,6 +34,7 @@ export default function Chat() {
   const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversation, setConversation] = useState<ConversationInfo | null>(null);
+  const [contactPhone, setContactPhone] = useState('');
   const [instances, setInstances] = useState<{ id: string; name: string; phone: string }[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [text, setText] = useState('');
