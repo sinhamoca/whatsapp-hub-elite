@@ -399,17 +399,105 @@ Deno.serve(async (req) => {
       );
     }
 
-    if ((msgType === "image" || msgType === "video") && !mediaUrl) {
+    if (["image", "video", "audio", "document", "sticker"].includes(msgType) && !mediaUrl) {
+      // Try to download media via WuzAPI download endpoint
+      const mediaMessage =
+        message?.ImageMessage || message?.imageMessage ||
+        message?.VideoMessage || message?.videoMessage ||
+        message?.AudioMessage || message?.audioMessage ||
+        message?.DocumentMessage || message?.documentMessage ||
+        message?.StickerMessage || message?.stickerMessage ||
+        null;
+
+      const dlUrl = pickFirstString(
+        mediaMessage?.URL, mediaMessage?.Url, mediaMessage?.url,
+        mediaMessage?.DirectPath, mediaMessage?.directPath,
+      );
+      const mediaKey = pickFirstString(
+        mediaMessage?.MediaKey, mediaMessage?.mediaKey,
+      );
+      const fileSHA256 = pickFirstString(
+        mediaMessage?.FileSHA256, mediaMessage?.fileSHA256, mediaMessage?.fileSha256,
+      );
+      const fileEncSHA256 = pickFirstString(
+        mediaMessage?.FileEncSHA256, mediaMessage?.fileEncSHA256, mediaMessage?.fileEncSha256,
+      );
+      const fileLength = Number(mediaMessage?.FileLength || mediaMessage?.fileLength || 0);
+
+      if (dlUrl && mediaKey) {
+        const endpointMap: Record<string, string> = {
+          image: "/chat/downloadimage",
+          video: "/chat/downloadvideo",
+          audio: "/chat/downloadaudio",
+          document: "/chat/downloaddocument",
+          sticker: "/chat/downloadimage",
+        };
+        const dlEndpoint = endpointMap[msgType] || "/chat/downloadimage";
+        const apiUrl = instanceApiUrl.replace(/\/+$/, "");
+
+        try {
+          const dlPayload: any = {
+            Url: dlUrl,
+            MediaKey: mediaKey,
+            Mimetype: mediaMime || "application/octet-stream",
+          };
+          if (fileSHA256) dlPayload.FileSHA256 = fileSHA256;
+          if (fileEncSHA256) dlPayload.FileEncSHA256 = fileEncSHA256;
+          if (fileLength) dlPayload.FileLength = fileLength;
+
+          console.log("Downloading media from WuzAPI:", dlEndpoint);
+
+          const dlResp = await fetch(`${apiUrl}${dlEndpoint}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Token: instance.token },
+            body: JSON.stringify(dlPayload),
+          });
+
+          if (dlResp.ok) {
+            const dlData = await dlResp.json();
+            const dlBase64 = dlData?.Data || dlData?.data || "";
+            if (dlBase64 && typeof dlBase64 === "string") {
+              const cleanB64 = dlBase64.includes("base64,") ? dlBase64.split("base64,")[1] : dlBase64;
+              const sizeEst = cleanB64.length * 0.75;
+              if (sizeEst <= 5 * 1024 * 1024) {
+                const mime = mediaMime || "application/octet-stream";
+                const ext = mime.split("/")[1]?.split(";")[0] || "bin";
+                const fp = `${instanceId}/${Date.now()}_${msgId || crypto.randomUUID()}.${ext}`;
+                const bin = atob(cleanB64);
+                const u8 = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+                const { error: upErr } = await supabase.storage.from("media").upload(fp, u8.buffer, { contentType: mime, upsert: true });
+                if (!upErr) {
+                  const { data: pubUrl } = supabase.storage.from("media").getPublicUrl(fp);
+                  mediaUrl = pubUrl?.publicUrl || "";
+                  console.log("Media downloaded & uploaded:", fp);
+                } else { console.error("Storage upload error:", upErr.message); }
+              } else { console.warn("Downloaded media too large:", Math.round(sizeEst / 1024), "KB"); }
+            }
+          } else {
+            console.error("WuzAPI download failed:", dlResp.status, await dlResp.text().catch(() => ""));
+          }
+        } catch (dlErr) { console.error("Media download error:", dlErr); }
+      } else {
       console.warn("Media sem URL/base64", {
         msgType,
         eventKeys: Object.keys(eventData || {}),
         messageKeys: Object.keys(message || {}),
+        mediaMessageKeys: Object.keys(mediaMessage || {}),
       });
+      }
     }
 
     console.log("Processing:", { remoteJid, msgType, fromMe, bodyLen: body?.length, hasMedia: !!mediaUrl });
 
-    // No filters here - filters should be configured directly in WuzAPI webhook settings
+    // Filter out groups and status broadcasts
+    if (remoteJid.endsWith("@g.us") || remoteJid === "status@broadcast") {
+      console.log("Filtered:", remoteJid);
+      return new Response(JSON.stringify({ ok: true, type: "filtered" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (!remoteJid || !body) {
       // Non-message event (ReadReceipt, Presence, etc.) - just acknowledge
