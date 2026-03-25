@@ -82,7 +82,14 @@ Deno.serve(async (req) => {
     }
 
     const wuzResponse = await fetch(url, fetchOptions);
-    const wuzData = await wuzResponse.json();
+    const rawText = await wuzResponse.text();
+
+    let wuzData: unknown;
+    try {
+      wuzData = JSON.parse(rawText);
+    } catch {
+      wuzData = { raw: rawText, status: wuzResponse.status };
+    }
 
     return new Response(JSON.stringify(wuzData), {
       status: wuzResponse.status,
