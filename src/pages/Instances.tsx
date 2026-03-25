@@ -83,6 +83,25 @@ export default function Instances() {
     fetchInstances();
   }, [fetchInstances]);
 
+  const configureWebhook = async (instanceId: string) => {
+    const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/wuzapi-webhook`;
+    try {
+      await supabase.functions.invoke('wuzapi-proxy', {
+        body: {
+          instanceId,
+          endpoint: '/webhook',
+          method: 'POST',
+          payload: { webhookURL: webhookUrl },
+        },
+      });
+      // Update DB record
+      await supabase.from('instances').update({ webhook_url: webhookUrl }).eq('id', instanceId);
+      toast({ title: 'Webhook configurado!', description: 'Mensagens serão recebidas automaticamente.' });
+    } catch (err: any) {
+      console.error('Webhook config error:', err);
+    }
+  };
+
   const handleAdd = async () => {
     if (!form.name || !form.apiUrl || !form.token || !user) return;
     setSaving(true);
@@ -104,6 +123,11 @@ export default function Instances() {
     if (error) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
       return;
+    }
+
+    // Auto-configure webhook
+    if (data) {
+      await configureWebhook((data as any).id);
     }
 
     setForm({ name: '', phone: '', apiUrl: '', token: '' });
