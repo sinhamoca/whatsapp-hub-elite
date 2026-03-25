@@ -48,6 +48,7 @@ export default function Instances() {
       phone: d.phone || '',
       api_url: d.api_url,
       token: d.token,
+      webhook_url: d.webhook_url || '',
       connected: undefined,
       statusLoading: true,
     }));
