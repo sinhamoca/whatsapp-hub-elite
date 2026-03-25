@@ -95,12 +95,12 @@ Deno.serve(async (req) => {
 
     const token = tokenCandidates[0] || "";
 
-    let instance: { id: string; user_id: string } | null = null;
+    let instance: { id: string; user_id: string; api_url: string; token: string } | null = null;
 
     if (token) {
       const { data } = await supabase
         .from("instances")
-        .select("id, user_id")
+        .select("id, user_id, api_url, token")
         .eq("token", token)
         .maybeSingle();
 
@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
       if (instanceIdCandidate) {
         const { data } = await supabase
           .from("instances")
-          .select("id, user_id")
+          .select("id, user_id, api_url, token")
           .eq("id", instanceIdCandidate)
           .maybeSingle();
 
@@ -135,7 +135,7 @@ Deno.serve(async (req) => {
     if (!instance) {
       const { data: fallbackInstances } = await supabase
         .from("instances")
-        .select("id, user_id")
+        .select("id, user_id, api_url, token")
         .limit(2);
 
       if ((fallbackInstances || []).length === 1) {
@@ -152,7 +152,34 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { id: instanceId, user_id: userId } = instance;
+    const { id: instanceId, user_id: userId, api_url: instanceApiUrl } = instance;
+
+    const pickFirstString = (...values: unknown[]) => {
+      for (const value of values) {
+        const text = String(value || "").trim();
+        if (text) return text;
+      }
+      return "";
+    };
+
+    const normalizeMediaUrl = (value: unknown) => {
+      const raw = String(value || "").trim();
+      if (!raw) return "";
+
+      if (raw.startsWith("//")) {
+        return `https:${raw}`;
+      }
+
+      if (raw.startsWith("/")) {
+        try {
+          return new URL(raw, instanceApiUrl).toString();
+        } catch {
+          return raw;
+        }
+      }
+
+      return raw;
+    };
 
     // Parse event with compatibility for multiple payload shapes
     const event = eventData.event || eventData.data || eventData;
@@ -200,39 +227,139 @@ Deno.serve(async (req) => {
       body = imageMessage?.Caption || imageMessage?.caption || "📷 Imagem";
       msgType = "image";
       mediaMime = imageMessage?.Mimetype || imageMessage?.mimetype || "image/jpeg";
+      mediaUrl = normalizeMediaUrl(
+        pickFirstString(
+          imageMessage?.URL,
+          imageMessage?.Url,
+          imageMessage?.url,
+          imageMessage?.DownloadURL,
+          imageMessage?.downloadURL,
+          imageMessage?.downloadUrl,
+          imageMessage?.DirectPath,
+          imageMessage?.directPath,
+          eventData?.url,
+          eventData?.mediaUrl,
+          eventData?.data?.url,
+          eventData?.data?.mediaUrl,
+          eventData?.data?.fileUrl,
+          eventData?.fileUrl,
+        ),
+      );
     } else if (message?.VideoMessage || message?.videoMessage) {
       const videoMessage = message.VideoMessage || message.videoMessage;
       body = videoMessage?.Caption || videoMessage?.caption || "🎥 Vídeo";
       msgType = "video";
       mediaMime = videoMessage?.Mimetype || videoMessage?.mimetype || "video/mp4";
+      mediaUrl = normalizeMediaUrl(
+        pickFirstString(
+          videoMessage?.URL,
+          videoMessage?.Url,
+          videoMessage?.url,
+          videoMessage?.DownloadURL,
+          videoMessage?.downloadURL,
+          videoMessage?.downloadUrl,
+          videoMessage?.DirectPath,
+          videoMessage?.directPath,
+          eventData?.url,
+          eventData?.mediaUrl,
+          eventData?.data?.url,
+          eventData?.data?.mediaUrl,
+          eventData?.data?.fileUrl,
+          eventData?.fileUrl,
+        ),
+      );
     } else if (message?.AudioMessage || message?.audioMessage) {
       const audioMessage = message.AudioMessage || message.audioMessage;
       body = "🎵 Áudio";
       msgType = "audio";
       mediaMime = audioMessage?.Mimetype || audioMessage?.mimetype || "audio/ogg";
+      mediaUrl = normalizeMediaUrl(
+        pickFirstString(
+          audioMessage?.URL,
+          audioMessage?.Url,
+          audioMessage?.url,
+          audioMessage?.DownloadURL,
+          audioMessage?.downloadURL,
+          audioMessage?.downloadUrl,
+          eventData?.url,
+          eventData?.mediaUrl,
+          eventData?.data?.url,
+          eventData?.data?.mediaUrl,
+        ),
+      );
     } else if (message?.DocumentMessage || message?.documentMessage) {
       const documentMessage = message.DocumentMessage || message.documentMessage;
       body = documentMessage?.FileName || documentMessage?.fileName || "📄 Documento";
       msgType = "document";
       mediaMime = documentMessage?.Mimetype || documentMessage?.mimetype || "";
+      mediaUrl = normalizeMediaUrl(
+        pickFirstString(
+          documentMessage?.URL,
+          documentMessage?.Url,
+          documentMessage?.url,
+          documentMessage?.DownloadURL,
+          documentMessage?.downloadURL,
+          documentMessage?.downloadUrl,
+          eventData?.url,
+          eventData?.mediaUrl,
+          eventData?.data?.url,
+          eventData?.data?.mediaUrl,
+        ),
+      );
     } else if (message?.StickerMessage || message?.stickerMessage) {
       body = "🏷️ Sticker";
       msgType = "sticker";
+      const stickerMessage = message.StickerMessage || message.stickerMessage;
+      mediaUrl = normalizeMediaUrl(
+        pickFirstString(
+          stickerMessage?.URL,
+          stickerMessage?.Url,
+          stickerMessage?.url,
+          stickerMessage?.DownloadURL,
+          stickerMessage?.downloadURL,
+          stickerMessage?.downloadUrl,
+          eventData?.url,
+          eventData?.mediaUrl,
+          eventData?.data?.url,
+          eventData?.data?.mediaUrl,
+        ),
+      );
     }
 
     // Upload base64 media to storage bucket (skip if too large to avoid timeouts)
-    const rawBase64 = eventData?.base64 || eventData?.data?.base64;
-    if (rawBase64 && typeof rawBase64 === "string") {
-      const sizeEstimate = rawBase64.length * 0.75; // approximate bytes
+    const rawBase64 = pickFirstString(
+      eventData?.base64,
+      eventData?.data?.base64,
+      message?.ImageMessage?.Base64,
+      message?.imageMessage?.base64,
+      message?.VideoMessage?.Base64,
+      message?.videoMessage?.base64,
+      message?.AudioMessage?.Base64,
+      message?.audioMessage?.base64,
+      message?.DocumentMessage?.Base64,
+      message?.documentMessage?.base64,
+    );
+
+    if (rawBase64) {
+      const base64Data = rawBase64.includes("base64,")
+        ? rawBase64.split("base64,")[1]
+        : rawBase64;
+      const sizeEstimate = base64Data.length * 0.75; // approximate bytes
       const MAX_SIZE = 5 * 1024 * 1024; // 5MB limit
 
       if (sizeEstimate <= MAX_SIZE) {
         try {
-          const mime = eventData?.mimeType || eventData?.data?.mimeType || mediaMime || "application/octet-stream";
+          const dataUriMime = rawBase64.match(/^data:([^;]+);base64,/i)?.[1] || "";
+          const mime =
+            eventData?.mimeType ||
+            eventData?.data?.mimeType ||
+            mediaMime ||
+            dataUriMime ||
+            "application/octet-stream";
           const ext = mime.split("/")[1]?.split(";")[0] || "bin";
           const filePath = `${instanceId}/${Date.now()}_${msgId || crypto.randomUUID()}.${ext}`;
 
-          const binaryStr = atob(rawBase64);
+          const binaryStr = atob(base64Data);
           const bytes = new Uint8Array(binaryStr.length);
           for (let i = 0; i < binaryStr.length; i++) {
             bytes[i] = binaryStr.charCodeAt(i);
@@ -258,7 +385,26 @@ Deno.serve(async (req) => {
     }
 
     if (eventData?.s3?.url || eventData?.data?.s3?.url) {
-      mediaUrl = eventData?.s3?.url || eventData?.data?.s3?.url;
+      mediaUrl = normalizeMediaUrl(eventData?.s3?.url || eventData?.data?.s3?.url);
+    }
+
+    if (!mediaUrl) {
+      mediaUrl = normalizeMediaUrl(
+        pickFirstString(
+          eventData?.media,
+          eventData?.data?.media,
+          eventData?.file,
+          eventData?.data?.file,
+        ),
+      );
+    }
+
+    if ((msgType === "image" || msgType === "video") && !mediaUrl) {
+      console.warn("Media sem URL/base64", {
+        msgType,
+        eventKeys: Object.keys(eventData || {}),
+        messageKeys: Object.keys(message || {}),
+      });
     }
 
     console.log("Processing:", { remoteJid, msgType, fromMe, bodyLen: body?.length, hasMedia: !!mediaUrl });
