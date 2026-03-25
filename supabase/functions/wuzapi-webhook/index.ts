@@ -701,7 +701,7 @@ Deno.serve(async (req) => {
         jid: remoteJid,
         push_name: pushName,
         name: contactName,
-        phone: remoteJid.split("@")[0],
+        phone: realPhone,
       },
       { onConflict: "instance_id,jid" }
     );
