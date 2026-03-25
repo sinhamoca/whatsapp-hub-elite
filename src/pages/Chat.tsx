@@ -82,9 +82,11 @@ export default function Chat() {
       .eq('instance_id', convRes.data.instance_id)
       .maybeSingle();
     
-    const phone = contactData?.phone || '';
-    // Only set if it looks like a real phone (not a LID)
-    if (phone && phone.length <= 15 && /^\d+$/.test(phone)) {
+    const phone = (contactData?.phone || '').replace(/\D/g, '');
+    const jidLocalPart = convRes.data.jid.split('@')[0] || '';
+    const isLidJid = convRes.data.jid.endsWith('@lid');
+
+    if (phone && phone.length <= 15 && /^\d+$/.test(phone) && (!isLidJid || phone !== jidLocalPart)) {
       setContactPhone(phone);
     } else {
       setContactPhone('');
