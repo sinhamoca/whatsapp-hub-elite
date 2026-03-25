@@ -151,9 +151,13 @@ export default function Conversations() {
               onClick={() => navigate(`/chat/${conv.id}`)}
               className="w-full flex items-center gap-3 p-4 hover:bg-secondary/50 transition-colors border-b border-border/50 text-left"
             >
-              <div className="w-11 h-11 rounded-full bg-secondary flex items-center justify-center shrink-0 text-sm font-semibold text-foreground">
-                {conv.contact_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-              </div>
+              {conv.avatar_url ? (
+                <img src={conv.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover shrink-0" />
+              ) : (
+                <div className="w-11 h-11 rounded-full bg-secondary flex items-center justify-center shrink-0 text-sm font-semibold text-foreground">
+                  {conv.contact_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-foreground text-sm truncate">{conv.contact_name}</span>
