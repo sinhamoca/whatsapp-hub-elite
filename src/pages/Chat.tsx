@@ -62,7 +62,7 @@ export default function Chat() {
     if (!user || !id) return;
 
     const [convRes, instRes] = await Promise.all([
-      supabase.from('conversations').select('id, jid, contact_name, instance_id').eq('id', id).single(),
+      supabase.from('conversations').select('id, jid, contact_name, instance_id, avatar_url').eq('id', id).single(),
       supabase.from('instances').select('id, name, phone'),
     ]);
 
