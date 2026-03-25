@@ -262,6 +262,11 @@ export default function Instances() {
                   <p className="text-sm text-muted-foreground truncate">{inst.phone}</p>
                 </div>
                 <div className="flex gap-1">
+                  {!inst.webhook_url && inst.connected && (
+                    <Button variant="ghost" size="icon" title="Configurar Webhook" onClick={() => configureWebhook(inst.id)}>
+                      <Webhook className="h-4 w-4 text-accent-foreground" />
+                    </Button>
+                  )}
                   {!inst.connected && !inst.statusLoading && (
                     <Button variant="ghost" size="icon" title="QR Code" onClick={() => handleQrCode(inst.id)}>
                       <QrCode className="h-4 w-4" />
