@@ -59,10 +59,12 @@ export default function Instances() {
   const checkStatus = async (instanceId: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('wuzapi-proxy', {
-        body: { instanceId, endpoint: '/api/status', method: 'GET' },
+        body: { instanceId, endpoint: '/session/status', method: 'GET' },
       });
 
-      const isConnected = !error && data && data.Connected === true;
+      const connectedValue = (data as any)?.Connected ?? (data as any)?.connected ?? (data as any)?.data?.Connected ?? (data as any)?.data?.connected;
+      const isConnected = !error && Boolean(connectedValue);
+
       setInstances(prev =>
         prev.map(i =>
           i.id === instanceId ? { ...i, connected: isConnected, statusLoading: false } : i
