@@ -85,7 +85,7 @@ export default function Instances() {
     fetchInstances();
   }, [fetchInstances]);
 
-  const configureWebhook = async (instanceId: string) => {
+  const configureWebhookAndEvents = async (instanceId: string) => {
     try {
       const { data: instanceRow } = await supabase
         .from('instances')
@@ -98,19 +98,23 @@ export default function Instances() {
         ? `${webhookBaseUrl}?token=${encodeURIComponent(instanceRow.token)}`
         : webhookBaseUrl;
 
-      await supabase.functions.invoke('wuzapi-proxy', {
-        body: {
-          instanceId,
-          endpoint: '/webhook',
-          method: 'POST',
-          payload: { webhookURL: webhookUrl },
-        },
-      });
+      // Configure webhook URL and events in parallel
+      await Promise.all([
+        supabase.functions.invoke('wuzapi-proxy', {
+          body: {
+            instanceId,
+            endpoint: '/webhook',
+            method: 'POST',
+            payload: { webhookURL: webhookUrl, events: ['Message'] },
+          },
+        }),
+      ]);
 
       await supabase.from('instances').update({ webhook_url: webhookUrl }).eq('id', instanceId);
-      toast({ title: 'Webhook configurado!', description: 'Mensagens serão recebidas automaticamente.' });
+      toast({ title: 'Webhook e eventos configurados!', description: 'Apenas mensagens serão recebidas automaticamente.' });
     } catch (err: any) {
-      console.error('Webhook config error:', err);
+      console.error('Webhook/events config error:', err);
+      toast({ title: 'Aviso', description: 'Instância salva, mas houve erro ao configurar webhook. Tente reconfigurar.', variant: 'destructive' });
     }
   };
 
