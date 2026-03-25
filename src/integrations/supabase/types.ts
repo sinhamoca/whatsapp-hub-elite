@@ -14,6 +14,91 @@ export type Database = {
   }
   public: {
     Tables: {
+      contacts: {
+        Row: {
+          created_at: string | null
+          id: string
+          instance_id: string
+          jid: string
+          name: string | null
+          phone: string | null
+          push_name: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          instance_id: string
+          jid: string
+          name?: string | null
+          phone?: string | null
+          push_name?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          instance_id?: string
+          jid?: string
+          name?: string | null
+          phone?: string | null
+          push_name?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contacts_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversations: {
+        Row: {
+          contact_name: string | null
+          created_at: string | null
+          id: string
+          instance_id: string
+          jid: string
+          last_message: string | null
+          last_message_at: string | null
+          unread_count: number | null
+          user_id: string
+        }
+        Insert: {
+          contact_name?: string | null
+          created_at?: string | null
+          id?: string
+          instance_id: string
+          jid: string
+          last_message?: string | null
+          last_message_at?: string | null
+          unread_count?: number | null
+          user_id: string
+        }
+        Update: {
+          contact_name?: string | null
+          created_at?: string | null
+          id?: string
+          instance_id?: string
+          jid?: string
+          last_message?: string | null
+          last_message_at?: string | null
+          unread_count?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       instances: {
         Row: {
           api_url: string
@@ -23,6 +108,7 @@ export type Database = {
           phone: string | null
           token: string
           user_id: string
+          webhook_url: string | null
         }
         Insert: {
           api_url: string
@@ -32,6 +118,7 @@ export type Database = {
           phone?: string | null
           token: string
           user_id: string
+          webhook_url?: string | null
         }
         Update: {
           api_url?: string
@@ -41,8 +128,72 @@ export type Database = {
           phone?: string | null
           token?: string
           user_id?: string
+          webhook_url?: string | null
         }
         Relationships: []
+      }
+      messages: {
+        Row: {
+          body: string | null
+          conversation_id: string
+          created_at: string | null
+          from_me: boolean | null
+          id: string
+          instance_id: string
+          jid: string
+          media_mime: string | null
+          media_url: string | null
+          message_id: string | null
+          msg_type: string | null
+          timestamp: string | null
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          conversation_id: string
+          created_at?: string | null
+          from_me?: boolean | null
+          id?: string
+          instance_id: string
+          jid: string
+          media_mime?: string | null
+          media_url?: string | null
+          message_id?: string | null
+          msg_type?: string | null
+          timestamp?: string | null
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          conversation_id?: string
+          created_at?: string | null
+          from_me?: boolean | null
+          id?: string
+          instance_id?: string
+          jid?: string
+          media_mime?: string | null
+          media_url?: string | null
+          message_id?: string | null
+          msg_type?: string | null
+          timestamp?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
