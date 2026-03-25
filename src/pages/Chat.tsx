@@ -74,6 +74,22 @@ export default function Chat() {
     setSelectedInstanceId(convRes.data.instance_id);
     setInstances((instRes.data || []) as any);
 
+    // Fetch contact phone
+    const { data: contactData } = await supabase
+      .from('contacts')
+      .select('phone')
+      .eq('jid', convRes.data.jid)
+      .eq('instance_id', convRes.data.instance_id)
+      .maybeSingle();
+    
+    const phone = contactData?.phone || '';
+    // Only set if it looks like a real phone (not a LID)
+    if (phone && phone.length <= 15 && /^\d+$/.test(phone)) {
+      setContactPhone(phone);
+    } else {
+      setContactPhone('');
+    }
+
     const msgRes = await supabase
       .from('messages')
       .select('*')
