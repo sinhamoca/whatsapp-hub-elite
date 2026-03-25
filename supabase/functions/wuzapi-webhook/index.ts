@@ -181,6 +181,18 @@ Deno.serve(async (req) => {
       return raw;
     };
 
+    const isEncryptedWhatsappMediaUrl = (value: unknown) => {
+      const raw = String(value || "").trim();
+      if (!raw) return false;
+
+      try {
+        const parsed = new URL(raw);
+        return parsed.hostname.includes("mmg.whatsapp.net") || parsed.pathname.endsWith(".enc");
+      } catch {
+        return raw.includes("mmg.whatsapp.net") || raw.includes(".enc");
+      }
+    };
+
     // Parse event with compatibility for multiple payload shapes
     const event = eventData.event || eventData.data || eventData;
     const info = event?.Info || event?.info || eventData?.info || {};
@@ -397,6 +409,11 @@ Deno.serve(async (req) => {
           eventData?.data?.file,
         ),
       );
+    }
+
+    if (mediaUrl && isEncryptedWhatsappMediaUrl(mediaUrl)) {
+      console.log("Encrypted/temporary WhatsApp URL detected, switching to download flow");
+      mediaUrl = "";
     }
 
     if (["image", "video", "audio", "document", "sticker"].includes(msgType) && !mediaUrl) {
