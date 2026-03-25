@@ -17,6 +17,7 @@ interface Message {
   from_me: boolean;
   msg_type: string;
   media_url?: string;
+  media_mime?: string;
 }
 
 interface ConversationInfo {
@@ -287,7 +288,22 @@ export default function Chat() {
                   : 'bg-chat-incoming rounded-bl-md'
               )}>
                 {msg.media_url && msg.msg_type === 'image' && (
-                  <img src={msg.media_url} alt="Imagem" className="rounded-lg mb-1 max-w-full" />
+                  <img src={msg.media_url} alt="Imagem" className="rounded-lg mb-1 max-w-full max-h-64 object-contain cursor-pointer" onClick={() => window.open(msg.media_url, '_blank')} />
+                )}
+                {msg.media_url && msg.msg_type === 'video' && (
+                  <video src={msg.media_url} controls className="rounded-lg mb-1 max-w-full max-h-64" />
+                )}
+                {msg.media_url && msg.msg_type === 'audio' && (
+                  <audio src={msg.media_url} controls className="mb-1 max-w-full" />
+                )}
+                {msg.media_url && msg.msg_type === 'document' && (
+                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-secondary/50 rounded-lg p-2 mb-1 hover:bg-secondary transition-colors">
+                    <FileText className="h-5 w-5 text-primary shrink-0" />
+                    <span className="text-xs text-primary underline truncate">{msg.body || 'Documento'}</span>
+                  </a>
+                )}
+                {msg.media_url && msg.msg_type === 'sticker' && (
+                  <img src={msg.media_url} alt="Sticker" className="max-w-[150px] mb-1" />
                 )}
                 <p className="text-sm text-foreground">{msg.body}</p>
                 <p className="text-[10px] text-muted-foreground text-right mt-1">{formatTime(msg.timestamp)}</p>

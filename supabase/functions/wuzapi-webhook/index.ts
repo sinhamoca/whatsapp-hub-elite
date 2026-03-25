@@ -218,9 +218,34 @@ Deno.serve(async (req) => {
       msgType = "sticker";
     }
 
-    const webhookBase64 = eventData?.base64 || eventData?.data?.base64;
-    if (webhookBase64) {
-      mediaUrl = `data:${eventData?.mimeType || eventData?.data?.mimeType || mediaMime};base64,${webhookBase64}`;
+    // Upload base64 media to storage bucket
+    const rawBase64 = eventData?.base64 || eventData?.data?.base64;
+    if (rawBase64) {
+      try {
+        const mime = eventData?.mimeType || eventData?.data?.mimeType || mediaMime || "application/octet-stream";
+        const ext = mime.split("/")[1]?.split(";")[0] || "bin";
+        const filePath = `${instanceId}/${Date.now()}_${msgId || crypto.randomUUID()}.${ext}`;
+
+        // Decode base64 to Uint8Array
+        const binaryStr = atob(rawBase64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+
+        const { error: uploadError } = await supabase.storage
+          .from("media")
+          .upload(filePath, bytes.buffer, { contentType: mime, upsert: true });
+
+        if (!uploadError) {
+          const { data: publicUrlData } = supabase.storage.from("media").getPublicUrl(filePath);
+          mediaUrl = publicUrlData?.publicUrl || "";
+        } else {
+          console.error("Media upload error:", uploadError.message);
+        }
+      } catch (e) {
+        console.error("Base64 processing error:", e);
+      }
     }
 
     if (eventData?.s3?.url || eventData?.data?.s3?.url) {
