@@ -17,6 +17,7 @@ interface Conversation {
   unread_count: number;
   instance_id: string;
   instance_name?: string;
+  avatar_url?: string;
 }
 
 export default function Conversations() {
