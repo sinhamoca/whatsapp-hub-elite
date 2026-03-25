@@ -340,7 +340,7 @@ export default function Chat() {
         <div className="flex-1 min-w-0">
           <p className="font-medium text-sm text-foreground">{conversation?.contact_name || 'Chat'}</p>
           <p className="text-xs text-muted-foreground">
-            {conversation?.jid?.endsWith('@lid') ? '' : conversation?.jid?.split('@')[0]}
+            {contactPhone || (conversation?.jid?.endsWith('@lid') ? '' : conversation?.jid?.split('@')[0])}
           </p>
         </div>
         <DropdownMenu>
