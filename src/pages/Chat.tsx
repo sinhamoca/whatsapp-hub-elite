@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Send, Paperclip, Mic, Image, FileText, Video, ChevronDown, Loader2 } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, Mic, Image, FileText, Video, ChevronDown, Loader2, Square } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
@@ -39,8 +39,22 @@ export default function Chat() {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Build the payload with JID support (handles @lid format)
+  const buildRecipient = (jid: string) => {
+    // If JID is @lid format, send full JID; otherwise extract phone
+    if (jid.endsWith('@lid')) {
+      return { Phone: jid };
+    }
+    return { Phone: jid.split('@')[0] };
+  };
 
   const fetchData = useCallback(async () => {
     if (!user || !id) return;
@@ -68,17 +82,12 @@ export default function Chat() {
     setMessages((msgRes.data || []) as any);
     setLoading(false);
 
-    // Mark as read
-    await supabase
-      .from('conversations')
-      .update({ unread_count: 0 })
-      .eq('id', id);
+    await supabase.from('conversations').update({ unread_count: 0 }).eq('id', id);
   }, [user, id]);
 
   useEffect(() => {
     fetchData();
 
-    // Realtime for new messages
     const channel = supabase
       .channel(`messages-${id}`)
       .on(
@@ -86,7 +95,6 @@ export default function Chat() {
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${id}` },
         (payload) => {
           setMessages(prev => [...prev, payload.new as any]);
-          // Mark read
           supabase.from('conversations').update({ unread_count: 0 }).eq('id', id);
         }
       )
@@ -104,21 +112,18 @@ export default function Chat() {
     setSending(true);
 
     try {
+      const recipient = buildRecipient(conversation.jid);
       const { data, error } = await supabase.functions.invoke('wuzapi-proxy', {
         body: {
           instanceId: selectedInstanceId,
           endpoint: '/chat/send/text',
           method: 'POST',
-          payload: {
-            Phone: conversation.jid.split('@')[0],
-            Body: text.trim(),
-          },
+          payload: { ...recipient, Body: text.trim() },
         },
       });
 
       if (error) throw error;
 
-      // Add message locally
       const newMsg: Message = {
         id: Date.now().toString(),
         body: text.trim(),
@@ -128,7 +133,6 @@ export default function Chat() {
       };
       setMessages(prev => [...prev, newMsg]);
 
-      // Save to DB
       await supabase.from('messages').insert({
         user_id: user!.id,
         instance_id: selectedInstanceId,
@@ -141,7 +145,6 @@ export default function Chat() {
         timestamp: new Date().toISOString(),
       });
 
-      // Update conversation
       await supabase.from('conversations').update({
         last_message: text.trim().substring(0, 200),
         last_message_at: new Date().toISOString(),
@@ -164,23 +167,20 @@ export default function Chat() {
       const isImage = file.type.startsWith('image/');
       const isVideo = file.type.startsWith('video/');
       const isAudio = file.type.startsWith('audio/');
+      const recipient = buildRecipient(conversation.jid);
 
       let endpoint = '/chat/send/document';
-      let payload: any = {
-        Phone: conversation.jid.split('@')[0],
-        Document: `data:${file.type};base64,${base64}`,
-        FileName: file.name,
-      };
+      let payload: any = { ...recipient, Document: `data:${file.type};base64,${base64}`, FileName: file.name };
 
       if (isImage) {
         endpoint = '/chat/send/image';
-        payload = { Phone: conversation.jid.split('@')[0], Image: `data:${file.type};base64,${base64}`, Caption: file.name };
+        payload = { ...recipient, Image: `data:${file.type};base64,${base64}`, Caption: file.name };
       } else if (isVideo) {
         endpoint = '/chat/send/video';
-        payload = { Phone: conversation.jid.split('@')[0], Video: `data:${file.type};base64,${base64}`, Caption: file.name };
+        payload = { ...recipient, Video: `data:${file.type};base64,${base64}`, Caption: file.name };
       } else if (isAudio) {
         endpoint = '/chat/send/audio';
-        payload = { Phone: conversation.jid.split('@')[0], Audio: `data:${file.type};base64,${base64}` };
+        payload = { ...recipient, Audio: `data:${file.type};base64,${base64}` };
       }
 
       try {
@@ -216,7 +216,89 @@ export default function Chat() {
     e.target.value = '';
   };
 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        setRecordingTime(0);
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/ogg; codecs=opus' });
+        if (audioBlob.size < 1000) return; // too small
+
+        const reader = new FileReader();
+        reader.onload = async () => {
+          if (!conversation) return;
+          const base64 = (reader.result as string).split(',')[1];
+          const recipient = buildRecipient(conversation.jid);
+
+          try {
+            await supabase.functions.invoke('wuzapi-proxy', {
+              body: {
+                instanceId: selectedInstanceId,
+                endpoint: '/chat/send/audio',
+                method: 'POST',
+                payload: { ...recipient, Audio: `data:audio/ogg;base64,${base64}` },
+              },
+            });
+
+            const newMsg: Message = {
+              id: Date.now().toString(),
+              body: '🎤 Áudio',
+              timestamp: new Date().toISOString(),
+              from_me: true,
+              msg_type: 'audio',
+            };
+            setMessages(prev => [...prev, newMsg]);
+
+            await supabase.from('messages').insert({
+              user_id: user!.id,
+              instance_id: selectedInstanceId,
+              conversation_id: conversation.id,
+              jid: conversation.jid,
+              from_me: true,
+              body: '🎤 Áudio',
+              msg_type: 'audio',
+              timestamp: new Date().toISOString(),
+            });
+          } catch (err: any) {
+            toast({ title: 'Erro ao enviar áudio', description: err.message, variant: 'destructive' });
+          }
+        };
+        reader.readAsDataURL(audioBlob);
+      };
+
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      setRecording(true);
+
+      let t = 0;
+      recordingTimerRef.current = setInterval(() => {
+        t++;
+        setRecordingTime(t);
+      }, 1000);
+    } catch {
+      toast({ title: 'Erro', description: 'Não foi possível acessar o microfone', variant: 'destructive' });
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setRecording(false);
+  };
+
   const formatTime = (ts: string) => new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const formatRecordingTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
   const selectedInstance = instances.find(i => i.id === selectedInstanceId);
 
@@ -324,41 +406,63 @@ export default function Chat() {
             className="hidden"
             onChange={handleFileSelect}
           />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="shrink-0">
-                <Paperclip className="h-5 w-5" />
+
+          {recording ? (
+            <div className="flex-1 flex items-center gap-3 bg-destructive/10 rounded-lg px-4 py-2">
+              <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
+              <span className="text-sm font-medium text-destructive">{formatRecordingTime(recordingTime)}</span>
+              <span className="text-xs text-muted-foreground flex-1">Gravando...</span>
+              <Button variant="destructive" size="icon" className="h-8 w-8" onClick={stopRecording}>
+                <Square className="h-3.5 w-3.5" />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="bg-card border-border">
-              <DropdownMenuItem onClick={() => { fileRef.current!.accept = 'image/*'; fileRef.current!.click(); }}>
-                <Image className="h-4 w-4 mr-2" /> Imagem
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { fileRef.current!.accept = 'video/*'; fileRef.current!.click(); }}>
-                <Video className="h-4 w-4 mr-2" /> Vídeo
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { fileRef.current!.accept = 'audio/*'; fileRef.current!.click(); }}>
-                <Mic className="h-4 w-4 mr-2" /> Áudio
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { fileRef.current!.accept = '.pdf,.doc,.docx,.xls,.xlsx'; fileRef.current!.click(); }}>
-                <FileText className="h-4 w-4 mr-2" /> Documento
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Input
-            placeholder="Digite uma mensagem..."
-            value={text}
-            onChange={e => setText(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            className="bg-secondary/50 border-border"
-          />
-          <Button size="icon" onClick={handleSend} disabled={!text.trim() || sending}>
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </Button>
+            </div>
+          ) : (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="shrink-0">
+                    <Paperclip className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="bg-card border-border">
+                  <DropdownMenuItem onClick={() => { fileRef.current!.accept = 'image/*'; fileRef.current!.click(); }}>
+                    <Image className="h-4 w-4 mr-2" /> Imagem
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { fileRef.current!.accept = 'video/*'; fileRef.current!.click(); }}>
+                    <Video className="h-4 w-4 mr-2" /> Vídeo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { fileRef.current!.accept = 'audio/*'; fileRef.current!.click(); }}>
+                    <Mic className="h-4 w-4 mr-2" /> Áudio
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { fileRef.current!.accept = '.pdf,.doc,.docx,.xls,.xlsx'; fileRef.current!.click(); }}>
+                    <FileText className="h-4 w-4 mr-2" /> Documento
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Input
+                placeholder="Digite uma mensagem..."
+                value={text}
+                onChange={e => setText(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                className="bg-secondary/50 border-border"
+              />
+              {text.trim() ? (
+                <Button size="icon" onClick={handleSend} disabled={sending}>
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              ) : (
+                <Button variant="ghost" size="icon" onClick={startRecording} title="Gravar áudio">
+                  <Mic className="h-5 w-5" />
+                </Button>
+              )}
+            </>
+          )}
         </div>
-        <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
-          Respondendo via <span className="text-primary font-medium">{selectedInstance?.name || '...'}</span> ({selectedInstance?.phone || '...'})
-        </p>
+        {!recording && (
+          <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
+            Respondendo via <span className="text-primary font-medium">{selectedInstance?.name || '...'}</span> ({selectedInstance?.phone || '...'})
+          </p>
+        )}
       </div>
     </div>
   );
