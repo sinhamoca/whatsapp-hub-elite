@@ -765,12 +765,13 @@ async function processChatbot(
   messageBody: string,
 ) {
   // 1. Get all active flows for this instance
-  const { data: flows } = await supabase
+  const { data: flows, error: flowsErr } = await supabase
     .from("chatbot_flows")
     .select("id, trigger_type, trigger_keywords, trigger_match_type")
     .eq("instance_id", instanceId)
     .eq("is_active", true);
 
+  console.log("Chatbot flows query:", { instanceId, flowCount: flows?.length || 0, error: flowsErr?.message || null });
   if (!flows || flows.length === 0) return;
 
   const flowIds = flows.map((f: any) => f.id);
