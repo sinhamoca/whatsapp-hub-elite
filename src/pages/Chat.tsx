@@ -199,7 +199,14 @@ export default function Chat() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${id}` },
         (payload) => {
-          setMessages(prev => [...prev, payload.new as any]);
+          const newMsg = payload.new as any;
+          setMessages(prev => {
+            // Avoid duplicates from optimistic adds or repeated events
+            if (prev.some(m => m.id === newMsg.id || (m.message_id && m.message_id === newMsg.message_id))) {
+              return prev;
+            }
+            return [...prev, newMsg];
+          });
           supabase.from('conversations').update({ unread_count: 0 }).eq('id', id);
         }
       )
