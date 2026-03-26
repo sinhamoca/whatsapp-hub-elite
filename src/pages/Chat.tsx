@@ -44,8 +44,6 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [editingMsg, setEditingMsg] = useState<Message | null>(null);
-  const [editText, setEditText] = useState('');
   const [contextMenuMsg, setContextMenuMsg] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
