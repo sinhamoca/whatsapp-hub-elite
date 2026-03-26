@@ -137,12 +137,24 @@ Deno.serve(async (req) => {
 
     console.log(`Total contacts from WuzAPI: ${Object.keys(allContacts).length}`);
 
-    // Build lightweight lookup by non-digit-insensitive local part for fallbacks.
+    // Build lookup by local part (for @s.whatsapp.net fallbacks)
     const localPartLookup: Record<string, { jid: string; info: any }> = {};
+    // Build name→phone lookup from @s.whatsapp.net contacts for LID cross-reference
+    const nameToPhoneLookup: Record<string, string[]> = {};
     for (const [jid, info] of Object.entries(allContacts)) {
       const local = jid.split("@")[0] || "";
       if (local) localPartLookup[local] = { jid, info };
+
+      if (jid.endsWith("@s.whatsapp.net") && local) {
+        const fullName = String((info as any)?.FullName || "").trim().toLowerCase();
+        if (fullName) {
+          if (!nameToPhoneLookup[fullName]) nameToPhoneLookup[fullName] = [];
+          nameToPhoneLookup[fullName].push(local);
+        }
+      }
     }
+
+    console.log(`Name-to-phone lookup entries: ${Object.keys(nameToPhoneLookup).length}`);
 
     let synced = 0;
 
@@ -173,7 +185,7 @@ Deno.serve(async (req) => {
 
       if (!displayName) continue;
 
-      const reliablePhone = extractPhone(
+      let reliablePhone = extractPhone(
         pickFirstString(
           contactInfo?.Phone,
           contactInfo?.phone,
@@ -181,6 +193,20 @@ Deno.serve(async (req) => {
           contactInfo?.redactedPhone,
         )
       );
+
+      // For @s.whatsapp.net JIDs, extract phone from the JID itself
+      if (!reliablePhone && convJid.endsWith("@s.whatsapp.net")) {
+        reliablePhone = jidLocalPart;
+      }
+
+      // For @lid JIDs, try cross-referencing by unique FullName
+      if (!reliablePhone && isLidJid && displayName) {
+        const normalizedName = displayName.trim().toLowerCase();
+        const phoneMatches = nameToPhoneLookup[normalizedName];
+        if (phoneMatches && phoneMatches.length === 1) {
+          reliablePhone = phoneMatches[0];
+        }
+      }
 
       const payload: Record<string, any> = {
         user_id: user.id,
@@ -193,7 +219,6 @@ Deno.serve(async (req) => {
       if (reliablePhone) {
         payload.phone = reliablePhone;
       } else if (isLidJid) {
-        // Avoid storing the @lid internal ID as if it were a real phone number.
         payload.phone = "";
       }
 
