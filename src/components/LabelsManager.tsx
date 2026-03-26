@@ -63,6 +63,24 @@ export default function LabelsManager() {
     toast({ title: 'Etiqueta removida' });
   };
 
+  const startEditing = (label: Label) => {
+    setEditingId(label.id);
+    setEditName(label.name);
+    setEditColor(label.color);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId || !editName.trim()) return;
+    const { error } = await supabase.from('labels').update({ name: editName.trim(), color: editColor }).eq('id', editingId);
+    if (error) {
+      toast({ title: 'Erro ao editar', variant: 'destructive' });
+      return;
+    }
+    setEditingId(null);
+    fetchLabels();
+    toast({ title: 'Etiqueta atualizada!' });
+  };
+
   if (loading) return null;
 
   return (
