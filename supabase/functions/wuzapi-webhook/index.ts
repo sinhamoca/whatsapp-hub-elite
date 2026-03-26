@@ -766,7 +766,7 @@ async function processChatbot(
   // 1. Get all active flows for this instance
   const { data: flows } = await supabase
     .from("chatbot_flows")
-    .select("id")
+    .select("id, trigger_type, trigger_keywords, trigger_match_type")
     .eq("instance_id", instanceId)
     .eq("is_active", true);
 
@@ -789,8 +789,8 @@ async function processChatbot(
     // Continue existing session — match edges from current node
     await handleSessionStep(supabase, instance, userId, instanceId, jid, messageBody, activeSession);
   } else {
-    // No active session — check if message matches any start node's outgoing edges
-    await handleNewSession(supabase, instance, userId, instanceId, jid, messageBody, flowIds);
+    // No active session — check flow-level triggers first
+    await handleNewSession(supabase, instance, userId, instanceId, jid, messageBody, flows);
   }
 }
 
@@ -801,32 +801,83 @@ async function handleNewSession(
   instanceId: string,
   jid: string,
   messageBody: string,
-  flowIds: string[],
+  flows: any[],
 ) {
-  // Find start nodes in active flows
+  const msgLower = messageBody.toLowerCase().trim();
+
+  // Filter flows by their trigger conditions
+  const matchedFlows = flows.filter((flow: any) => {
+    const triggerType = flow.trigger_type || "keyword";
+
+    if (triggerType === "any") {
+      // Flow triggers on any message
+      return true;
+    }
+
+    // keyword trigger — check flow-level keywords
+    const keywords: string[] = flow.trigger_keywords || [];
+    if (keywords.length === 0) return false;
+
+    const matchType = flow.trigger_match_type || "contains";
+
+    return keywords.some((kw: string) => {
+      const kwLower = kw.toLowerCase().trim();
+      if (!kwLower) return false;
+      if (matchType === "exact") return msgLower === kwLower;
+      return msgLower.includes(kwLower);
+    });
+  });
+
+  if (matchedFlows.length === 0) return;
+
+  // Use first matched flow (keyword matches take priority over "any")
+  const keywordFlows = matchedFlows.filter((f: any) => (f.trigger_type || "keyword") === "keyword");
+  const selectedFlow = keywordFlows.length > 0 ? keywordFlows[0] : matchedFlows[0];
+
+  // Find start node for this flow
   const { data: startNodes } = await supabase
     .from("chatbot_nodes")
     .select("id, flow_id")
-    .in("flow_id", flowIds)
+    .eq("flow_id", selectedFlow.id)
     .eq("type", "start");
 
   if (!startNodes || startNodes.length === 0) return;
+  const startNode = startNodes[0];
 
-  // Get all edges from start nodes
-  const startNodeIds = startNodes.map((n: any) => n.id);
+  // Get edges from start node
   const { data: edges } = await supabase
     .from("chatbot_edges")
     .select("*")
-    .in("source_node_id", startNodeIds);
+    .eq("source_node_id", startNode.id);
 
   if (!edges || edges.length === 0) return;
 
-  // Find matching edge
+  // Find matching edge (within the flow, use edge keywords)
   const matchedEdge = findMatchingEdge(edges, messageBody);
-  if (!matchedEdge) return;
+  if (!matchedEdge) {
+    // If flow triggered by "any", use first edge as catch-all
+    if ((selectedFlow.trigger_type || "keyword") === "any" && edges.length > 0) {
+      const fallbackEdge = edges[0];
 
-  const startNode = startNodes.find((n: any) => n.id === matchedEdge.source_node_id);
-  if (!startNode) return;
+      const { data: session } = await supabase
+        .from("chatbot_sessions")
+        .insert({
+          user_id: userId,
+          instance_id: instanceId,
+          flow_id: selectedFlow.id,
+          jid,
+          current_node_id: fallbackEdge.target_node_id,
+          last_interaction_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (session) {
+        await executeNode(supabase, instance, userId, instanceId, jid, fallbackEdge.target_node_id);
+      }
+    }
+    return;
+  }
 
   // Create session
   const { data: session } = await supabase
@@ -834,7 +885,7 @@ async function handleNewSession(
     .insert({
       user_id: userId,
       instance_id: instanceId,
-      flow_id: startNode.flow_id,
+      flow_id: selectedFlow.id,
       jid,
       current_node_id: matchedEdge.target_node_id,
       last_interaction_at: new Date().toISOString(),

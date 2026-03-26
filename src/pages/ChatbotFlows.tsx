@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Bot, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Bot, Plus, Pencil, Trash2, Loader2, MessageSquare, Zap, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Flow {
@@ -15,6 +16,9 @@ interface Flow {
   instance_id: string;
   is_active: boolean;
   created_at: string;
+  trigger_type: string;
+  trigger_keywords: string[];
+  trigger_match_type: string;
 }
 
 interface Instance {
@@ -32,11 +36,11 @@ export default function ChatbotFlows() {
   const [newName, setNewName] = useState('');
   const [selectedInstance, setSelectedInstance] = useState('');
   const [creating, setCreating] = useState(false);
+  const [editingTrigger, setEditingTrigger] = useState<string | null>(null);
+  const [triggerKeywordInput, setTriggerKeywordInput] = useState('');
 
   useEffect(() => {
-    if (user) {
-      loadData();
-    }
+    if (user) loadData();
   }, [user]);
 
   const loadData = async () => {
@@ -45,7 +49,7 @@ export default function ChatbotFlows() {
       supabase.from('chatbot_flows').select('*').order('created_at', { ascending: false }),
       supabase.from('instances').select('id, name, phone'),
     ]);
-    if (flowsRes.data) setFlows(flowsRes.data);
+    if (flowsRes.data) setFlows(flowsRes.data as Flow[]);
     if (instancesRes.data) setInstances(instancesRes.data);
     setLoading(false);
   };
@@ -62,7 +66,6 @@ export default function ChatbotFlows() {
     if (error) {
       toast.error('Erro ao criar fluxo');
     } else if (data) {
-      // Create initial start node
       await supabase.from('chatbot_nodes').insert({
         flow_id: data.id,
         type: 'start',
@@ -90,6 +93,34 @@ export default function ChatbotFlows() {
     toast.success('Fluxo excluído');
   };
 
+  const handleTriggerTypeChange = async (flowId: string, triggerType: string) => {
+    await supabase.from('chatbot_flows').update({ trigger_type: triggerType }).eq('id', flowId);
+    setFlows(f => f.map(flow => flow.id === flowId ? { ...flow, trigger_type: triggerType } : flow));
+  };
+
+  const handleTriggerMatchChange = async (flowId: string, matchType: string) => {
+    await supabase.from('chatbot_flows').update({ trigger_match_type: matchType }).eq('id', flowId);
+    setFlows(f => f.map(flow => flow.id === flowId ? { ...flow, trigger_match_type: matchType } : flow));
+  };
+
+  const addTriggerKeyword = async (flowId: string) => {
+    if (!triggerKeywordInput.trim()) return;
+    const flow = flows.find(f => f.id === flowId);
+    if (!flow) return;
+    const updated = [...(flow.trigger_keywords || []), triggerKeywordInput.trim()];
+    await supabase.from('chatbot_flows').update({ trigger_keywords: updated }).eq('id', flowId);
+    setFlows(f => f.map(fl => fl.id === flowId ? { ...fl, trigger_keywords: updated } : fl));
+    setTriggerKeywordInput('');
+  };
+
+  const removeTriggerKeyword = async (flowId: string, index: number) => {
+    const flow = flows.find(f => f.id === flowId);
+    if (!flow) return;
+    const updated = flow.trigger_keywords.filter((_, i) => i !== index);
+    await supabase.from('chatbot_flows').update({ trigger_keywords: updated }).eq('id', flowId);
+    setFlows(f => f.map(fl => fl.id === flowId ? { ...fl, trigger_keywords: updated } : fl));
+  };
+
   const instanceName = (id: string) => instances.find(i => i.id === id)?.name || 'Desconhecida';
 
   if (loading) {
@@ -112,21 +143,14 @@ export default function ChatbotFlows() {
       <div className="glass rounded-xl p-4 space-y-3">
         <p className="text-sm font-medium text-foreground">Novo fluxo</p>
         <div className="flex flex-col sm:flex-row gap-2">
-          <Input
-            placeholder="Nome do fluxo"
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            className="flex-1"
-          />
+          <Input placeholder="Nome do fluxo" value={newName} onChange={e => setNewName(e.target.value)} className="flex-1" />
           <Select value={selectedInstance} onValueChange={setSelectedInstance}>
             <SelectTrigger className="w-full sm:w-48">
               <SelectValue placeholder="Instância" />
             </SelectTrigger>
             <SelectContent>
               {instances.map(inst => (
-                <SelectItem key={inst.id} value={inst.id}>
-                  {inst.name}
-                </SelectItem>
+                <SelectItem key={inst.id} value={inst.id}>{inst.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -146,23 +170,91 @@ export default function ChatbotFlows() {
       ) : (
         <div className="space-y-3">
           {flows.map(flow => (
-            <div key={flow.id} className="glass rounded-xl p-4 flex items-center justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-foreground truncate">{flow.name}</p>
-                <p className="text-xs text-muted-foreground">{instanceName(flow.instance_id)}</p>
+            <div key={flow.id} className="glass rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-foreground truncate">{flow.name}</p>
+                  <p className="text-xs text-muted-foreground">{instanceName(flow.instance_id)}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch checked={flow.is_active} onCheckedChange={(v) => handleToggle(flow.id, v)} />
+                  <Button size="icon" variant="ghost" onClick={() => navigate(`/chatbot/${flow.id}`)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={() => handleDelete(flow.id)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={flow.is_active}
-                  onCheckedChange={(v) => handleToggle(flow.id, v)}
-                />
-                <Button size="icon" variant="ghost" onClick={() => navigate(`/chatbot/${flow.id}`)}>
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button size="icon" variant="ghost" onClick={() => handleDelete(flow.id)}>
-                  <Trash2 className="h-4 w-4 text-destructive" />
+
+              {/* Trigger config */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-muted-foreground">Disparar:</span>
+                <Select value={flow.trigger_type || 'keyword'} onValueChange={(v) => handleTriggerTypeChange(flow.id, v)}>
+                  <SelectTrigger className="h-7 w-auto min-w-[140px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="keyword">
+                      <span className="flex items-center gap-1"><Zap className="h-3 w-3" /> Por palavra-chave</span>
+                    </SelectItem>
+                    <SelectItem value="any">
+                      <span className="flex items-center gap-1"><MessageSquare className="h-3 w-3" /> Qualquer mensagem</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {(flow.trigger_type || 'keyword') === 'keyword' && (
+                  <Select value={flow.trigger_match_type || 'contains'} onValueChange={(v) => handleTriggerMatchChange(flow.id, v)}>
+                    <SelectTrigger className="h-7 w-auto min-w-[110px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="contains">Contém</SelectItem>
+                      <SelectItem value="exact">Exata</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs text-muted-foreground"
+                  onClick={() => setEditingTrigger(editingTrigger === flow.id ? null : flow.id)}
+                >
+                  {(flow.trigger_type || 'keyword') === 'keyword'
+                    ? `${(flow.trigger_keywords || []).length} palavra(s)`
+                    : ''}
                 </Button>
               </div>
+
+              {/* Keywords editor */}
+              {editingTrigger === flow.id && (flow.trigger_type || 'keyword') === 'keyword' && (
+                <div className="space-y-2 pl-2 border-l-2 border-primary/20">
+                  <div className="flex flex-wrap gap-1">
+                    {(flow.trigger_keywords || []).map((kw, i) => (
+                      <Badge key={i} variant="secondary" className="text-xs gap-1">
+                        {kw}
+                        <button onClick={() => removeTriggerKeyword(flow.id, i)}>
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="flex gap-1">
+                    <Input
+                      placeholder="Adicionar palavra-chave..."
+                      value={triggerKeywordInput}
+                      onChange={e => setTriggerKeywordInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && addTriggerKeyword(flow.id)}
+                      className="h-7 text-xs flex-1"
+                    />
+                    <Button size="sm" className="h-7 text-xs" onClick={() => addTriggerKeyword(flow.id)}>
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
