@@ -244,7 +244,7 @@ export default function Labels() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.03, duration: 0.2 }}
                     >
-                      <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-secondary/50 transition-colors">
+                      <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer" onClick={() => openChat(contact)}>
                         <Avatar className="h-9 w-9">
                           <AvatarImage src={contact.avatar_url || undefined} />
                           <AvatarFallback
