@@ -99,6 +99,36 @@ export default function NodeConfigPanel({ nodeId, nodeName, nodeType, absenceMes
     setResponses(r => r.filter(res => res.id !== id));
   };
 
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const target = uploadTargetRef.current;
+    if (!file || !target) return;
+    e.target.value = '';
+
+    setUploadingId(target.id);
+    try {
+      const ext = file.name.split('.').pop() || 'bin';
+      const path = `chatbot/${nodeId}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('media').upload(path, file);
+      if (upErr) throw upErr;
+
+      const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
+      await updateResponse(target.id, 'media_url', urlData.publicUrl);
+      toast.success('Mídia enviada');
+    } catch (err: any) {
+      toast.error('Erro ao enviar mídia: ' + err.message);
+    }
+    setUploadingId(null);
+  };
+
+  const triggerUpload = (id: string, type: string) => {
+    uploadTargetRef.current = { id, type };
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = type === 'image' ? 'image/*' : 'video/*';
+      fileInputRef.current.click();
+    }
+  };
+
   return (
     <div className="absolute right-0 top-0 bottom-0 w-80 bg-card border-l border-border z-50 flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-border">
