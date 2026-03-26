@@ -789,7 +789,12 @@ async function processChatbot(
 
   if (activeSession) {
     // Continue existing session — match edges from current node
-    await handleSessionStep(supabase, instance, userId, instanceId, jid, messageBody, activeSession);
+    const handled = await handleSessionStep(supabase, instance, userId, instanceId, jid, messageBody, activeSession);
+
+    // If session was ended (dead-end), try to start a new flow using the same incoming message
+    if (!handled) {
+      await handleNewSession(supabase, instance, userId, instanceId, jid, messageBody, flows);
+    }
   } else {
     // No active session — check flow-level triggers first
     await handleNewSession(supabase, instance, userId, instanceId, jid, messageBody, flows);
