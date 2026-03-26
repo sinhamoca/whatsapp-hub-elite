@@ -712,18 +712,19 @@ Deno.serve(async (req) => {
       timestamp,
     });
 
-    // Upsert contact
-    await supabase.from("contacts").upsert(
-      {
+    // Upsert contact — skip when fromMe to avoid overwriting with our own info
+    if (!fromMe) {
+      const contactUpsert: Record<string, any> = {
         user_id: userId,
         instance_id: instanceId,
         jid: remoteJid,
-        push_name: pushName,
-        name: contactName,
         phone: realPhone,
-      },
-      { onConflict: "instance_id,jid" }
-    );
+      };
+      if (pushName) contactUpsert.push_name = pushName;
+      if (contactName) contactUpsert.name = contactName;
+
+      await supabase.from("contacts").upsert(contactUpsert, { onConflict: "instance_id,jid" });
+    }
 
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
