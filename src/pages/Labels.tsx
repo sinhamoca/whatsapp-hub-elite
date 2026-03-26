@@ -7,9 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Tag, ArrowLeft, Users, Hash } from 'lucide-react';
+import { Loader2, Tag, ArrowLeft, Users, Hash, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import BulkSendModal from '@/components/BulkSendModal';
 
 interface Label {
   id: string;
