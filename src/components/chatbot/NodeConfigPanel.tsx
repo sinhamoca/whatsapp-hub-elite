@@ -288,6 +288,7 @@ export default function NodeConfigPanel({ nodeId, nodeName, nodeType, absenceMes
           </div>
         </div>
       </ScrollArea>
+      <input ref={fileInputRef} type="file" className="hidden" onChange={handleMediaUpload} />
     </div>
   );
 }
