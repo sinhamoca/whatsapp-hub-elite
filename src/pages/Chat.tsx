@@ -51,6 +51,7 @@ export default function Chat() {
   const [editingMsg, setEditingMsg] = useState<Message | null>(null);
   const [editText, setEditText] = useState('');
   const [showProfile, setShowProfile] = useState(false);
+  const [contactLabels, setContactLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
