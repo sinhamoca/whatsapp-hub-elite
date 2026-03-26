@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Send, Paperclip, Mic, Image, FileText, Video, ChevronDown, Loader2, Square } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, Mic, Image, FileText, Video, ChevronDown, Loader2, Square, Pencil, Trash2, X, Check } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
@@ -18,6 +18,7 @@ interface Message {
   msg_type: string;
   media_url?: string;
   media_mime?: string;
+  message_id?: string;
 }
 
 interface ConversationInfo {
@@ -43,20 +44,76 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [editingMsg, setEditingMsg] = useState<Message | null>(null);
+  const [editText, setEditText] = useState('');
+  const [contextMenuMsg, setContextMenuMsg] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Build the payload with JID support (handles @lid format)
   const buildRecipient = (jid: string) => {
-    // If JID is @lid format, send full JID; otherwise extract phone
     if (jid.endsWith('@lid')) {
       return { Phone: jid };
     }
     return { Phone: jid.split('@')[0] };
   };
+
+  // Auto-sync avatar if missing
+  const syncAvatarIfNeeded = useCallback(async (conv: ConversationInfo) => {
+    if (conv.avatar_url) return;
+
+    try {
+      const { data: instance } = await supabase
+        .from('instances')
+        .select('api_url, token')
+        .eq('id', conv.instance_id)
+        .single();
+
+      if (!instance) return;
+
+      const apiUrl = instance.api_url.replace(/\/+$/, '');
+      const avatarTarget = conv.jid.endsWith('@lid') ? conv.jid : (conv.jid.split('@')[0] || '');
+      if (!avatarTarget || conv.jid.endsWith('@newsletter')) return;
+
+      const avatarRes = await fetch(`${apiUrl}/user/avatar`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${instance.token}`,
+          Token: instance.token,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ Phone: avatarTarget, Preview: true }),
+      });
+
+      if (!avatarRes.ok) return;
+
+      const avatarData = await avatarRes.json();
+      const avatarUrl = avatarData?.data?.URL || avatarData?.data?.Url || avatarData?.data?.url || avatarData?.URL || avatarData?.Url || avatarData?.url || '';
+      if (!avatarUrl) return;
+
+      // Download and store via edge function to avoid CORS
+      const { error } = await supabase.functions.invoke('sync-single-avatar', {
+        body: { instanceId: conv.instance_id, jid: conv.jid, avatarUrl },
+      });
+
+      if (!error) {
+        // Refetch conversation to get the new avatar
+        const { data: updated } = await supabase
+          .from('conversations')
+          .select('avatar_url')
+          .eq('id', conv.id)
+          .single();
+
+        if (updated?.avatar_url) {
+          setConversation(prev => prev ? { ...prev, avatar_url: updated.avatar_url! } : prev);
+        }
+      }
+    } catch (err) {
+      console.warn('Avatar sync failed:', err);
+    }
+  }, []);
 
   const fetchData = useCallback(async () => {
     if (!user || !id) return;
@@ -71,21 +128,24 @@ export default function Chat() {
       return;
     }
 
-    setConversation(convRes.data as any);
-    setSelectedInstanceId(convRes.data.instance_id);
+    const convData = convRes.data as any;
+    setConversation(convData);
+    setSelectedInstanceId(convData.instance_id);
     setInstances((instRes.data || []) as any);
 
-    // Fetch contact phone
+    // Auto-sync avatar
+    syncAvatarIfNeeded(convData);
+
     const { data: contactData } = await supabase
       .from('contacts')
       .select('phone')
-      .eq('jid', convRes.data.jid)
-      .eq('instance_id', convRes.data.instance_id)
+      .eq('jid', convData.jid)
+      .eq('instance_id', convData.instance_id)
       .maybeSingle();
-    
+
     const phone = (contactData?.phone || '').replace(/\D/g, '');
-    const jidLocalPart = convRes.data.jid.split('@')[0] || '';
-    const isLidJid = convRes.data.jid.endsWith('@lid');
+    const jidLocalPart = convData.jid.split('@')[0] || '';
+    const isLidJid = convData.jid.endsWith('@lid');
 
     if (phone && phone.length <= 15 && /^\d+$/.test(phone) && (!isLidJid || phone !== jidLocalPart)) {
       setContactPhone(phone);
@@ -103,7 +163,7 @@ export default function Chat() {
     setLoading(false);
 
     await supabase.from('conversations').update({ unread_count: 0 }).eq('id', id);
-  }, [user, id]);
+  }, [user, id, syncAvatarIfNeeded]);
 
   useEffect(() => {
     fetchData();
@@ -127,6 +187,15 @@ export default function Chat() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Close context menu on click outside
+  useEffect(() => {
+    const handler = () => setContextMenuMsg(null);
+    if (contextMenuMsg) {
+      document.addEventListener('click', handler);
+      return () => document.removeEventListener('click', handler);
+    }
+  }, [contextMenuMsg]);
+
   const handleSend = async () => {
     if (!text.trim() || !conversation || sending) return;
     setSending(true);
@@ -144,12 +213,15 @@ export default function Chat() {
 
       if (error) throw error;
 
+      const messageId = (data as any)?.data?.Id || (data as any)?.data?.id || '';
+
       const newMsg: Message = {
         id: Date.now().toString(),
         body: text.trim(),
         timestamp: new Date().toISOString(),
         from_me: true,
         msg_type: 'text',
+        message_id: messageId,
       };
       setMessages(prev => [...prev, newMsg]);
 
@@ -157,7 +229,7 @@ export default function Chat() {
         user_id: user!.id,
         instance_id: selectedInstanceId,
         conversation_id: conversation.id,
-        message_id: (data as any)?.data?.Id || '',
+        message_id: messageId,
         jid: conversation.jid,
         from_me: true,
         body: text.trim(),
@@ -175,6 +247,66 @@ export default function Chat() {
       toast({ title: 'Erro ao enviar', description: err.message, variant: 'destructive' });
     }
     setSending(false);
+  };
+
+  const handleEditMessage = async (msg: Message) => {
+    if (!editText.trim() || !conversation || !msg.message_id) return;
+
+    try {
+      const recipient = buildRecipient(conversation.jid);
+      await supabase.functions.invoke('wuzapi-proxy', {
+        body: {
+          instanceId: selectedInstanceId,
+          endpoint: '/chat/editmessage',
+          method: 'POST',
+          payload: { ...recipient, Id: msg.message_id, Body: editText.trim() },
+        },
+      });
+
+      // Update locally
+      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, body: editText.trim() } : m));
+
+      // Update in DB
+      await supabase
+        .from('messages')
+        .update({ body: editText.trim() })
+        .eq('id', msg.id);
+
+      toast({ title: 'Mensagem editada' });
+    } catch (err: any) {
+      toast({ title: 'Erro ao editar', description: err.message, variant: 'destructive' });
+    }
+
+    setEditingMsg(null);
+    setEditText('');
+  };
+
+  const handleDeleteMessage = async (msg: Message) => {
+    if (!conversation || !msg.message_id) return;
+
+    try {
+      const recipient = buildRecipient(conversation.jid);
+      await supabase.functions.invoke('wuzapi-proxy', {
+        body: {
+          instanceId: selectedInstanceId,
+          endpoint: '/chat/revokemessage',
+          method: 'POST',
+          payload: { ...recipient, Id: msg.message_id },
+        },
+      });
+
+      // Remove locally
+      setMessages(prev => prev.filter(m => m.id !== msg.id));
+
+      // Remove from DB
+      await supabase.from('messages').delete().eq('id', msg.id);
+
+      toast({ title: 'Mensagem apagada' });
+    } catch (err: any) {
+      toast({ title: 'Erro ao apagar', description: err.message, variant: 'destructive' });
+    }
+
+    setContextMenuMsg(null);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -252,7 +384,7 @@ export default function Chat() {
         setRecordingTime(0);
 
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/ogg; codecs=opus' });
-        if (audioBlob.size < 1000) return; // too small
+        if (audioBlob.size < 1000) return;
 
         const reader = new FileReader();
         reader.onload = async () => {
@@ -389,32 +521,121 @@ export default function Chat() {
               transition={{ delay: Math.min(i * 0.02, 0.5) }}
               className={cn('flex', msg.from_me ? 'justify-end' : 'justify-start')}
             >
-              <div className={cn(
-                'max-w-[80%] md:max-w-[60%] rounded-2xl px-4 py-2',
-                msg.from_me
-                  ? 'bg-chat-outgoing rounded-br-md'
-                  : 'bg-chat-incoming rounded-bl-md'
-              )}>
-                {msg.media_url && msg.msg_type === 'image' && (
-                  <img src={msg.media_url} alt="Imagem" className="rounded-lg mb-1 max-w-full max-h-64 object-contain cursor-pointer" onClick={() => window.open(msg.media_url, '_blank')} />
+              <div
+                className={cn(
+                  'max-w-[80%] md:max-w-[60%] rounded-2xl px-4 py-2 relative group',
+                  msg.from_me
+                    ? 'bg-chat-outgoing rounded-br-md'
+                    : 'bg-chat-incoming rounded-bl-md'
                 )}
-                {msg.media_url && msg.msg_type === 'video' && (
-                  <video src={msg.media_url} controls className="rounded-lg mb-1 max-w-full max-h-64" />
+                onContextMenu={(e) => {
+                  if (msg.from_me && msg.message_id) {
+                    e.preventDefault();
+                    setContextMenuMsg(msg.id);
+                  }
+                }}
+              >
+                {/* Context menu for sent messages */}
+                {msg.from_me && msg.message_id && contextMenuMsg === msg.id && (
+                  <div className="absolute -top-10 right-0 z-50 flex gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingMsg(msg);
+                        setEditText(msg.body);
+                        setContextMenuMsg(null);
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive hover:text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteMessage(msg);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 )}
-                {msg.media_url && msg.msg_type === 'audio' && (
-                  <audio src={msg.media_url} controls className="mb-1 max-w-full" />
+
+                {/* Action buttons on hover for sent messages */}
+                {msg.from_me && msg.message_id && !editingMsg && contextMenuMsg !== msg.id && (
+                  <div className="absolute -top-8 right-0 hidden group-hover:flex gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => {
+                        setEditingMsg(msg);
+                        setEditText(msg.body);
+                      }}
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-destructive hover:text-destructive"
+                      onClick={() => handleDeleteMessage(msg)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 )}
-                {msg.media_url && msg.msg_type === 'document' && (
-                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-secondary/50 rounded-lg p-2 mb-1 hover:bg-secondary transition-colors">
-                    <FileText className="h-5 w-5 text-primary shrink-0" />
-                    <span className="text-xs text-primary underline truncate">{msg.body || 'Documento'}</span>
-                  </a>
+
+                {/* Editing mode */}
+                {editingMsg?.id === msg.id ? (
+                  <div className="flex flex-col gap-2">
+                    <Input
+                      value={editText}
+                      onChange={e => setEditText(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleEditMessage(msg);
+                        if (e.key === 'Escape') { setEditingMsg(null); setEditText(''); }
+                      }}
+                      className="text-sm bg-background/50"
+                      autoFocus
+                    />
+                    <div className="flex gap-1 justify-end">
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingMsg(null); setEditText(''); }}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-primary" onClick={() => handleEditMessage(msg)}>
+                        <Check className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {msg.media_url && msg.msg_type === 'image' && (
+                      <img src={msg.media_url} alt="Imagem" className="rounded-lg mb-1 max-w-full max-h-64 object-contain cursor-pointer" onClick={() => window.open(msg.media_url, '_blank')} />
+                    )}
+                    {msg.media_url && msg.msg_type === 'video' && (
+                      <video src={msg.media_url} controls className="rounded-lg mb-1 max-w-full max-h-64" />
+                    )}
+                    {msg.media_url && msg.msg_type === 'audio' && (
+                      <audio src={msg.media_url} controls className="mb-1 max-w-full" />
+                    )}
+                    {msg.media_url && msg.msg_type === 'document' && (
+                      <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-secondary/50 rounded-lg p-2 mb-1 hover:bg-secondary transition-colors">
+                        <FileText className="h-5 w-5 text-primary shrink-0" />
+                        <span className="text-xs text-primary underline truncate">{msg.body || 'Documento'}</span>
+                      </a>
+                    )}
+                    {msg.media_url && msg.msg_type === 'sticker' && (
+                      <img src={msg.media_url} alt="Sticker" className="max-w-[150px] mb-1" />
+                    )}
+                    <p className="text-sm text-foreground">{msg.body}</p>
+                    <p className="text-[10px] text-muted-foreground text-right mt-1">{formatTime(msg.timestamp)}</p>
+                  </>
                 )}
-                {msg.media_url && msg.msg_type === 'sticker' && (
-                  <img src={msg.media_url} alt="Sticker" className="max-w-[150px] mb-1" />
-                )}
-                <p className="text-sm text-foreground">{msg.body}</p>
-                <p className="text-[10px] text-muted-foreground text-right mt-1">{formatTime(msg.timestamp)}</p>
               </div>
             </motion.div>
           ))
