@@ -13,6 +13,7 @@ import Contacts from "./pages/Contacts";
 import SettingsPage from "./pages/SettingsPage";
 import ChatbotFlows from "./pages/ChatbotFlows";
 import ChatbotEditor from "./pages/ChatbotEditor";
+import Labels from "./pages/Labels";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/chat/:id" element={<AppLayout><Chat /></AppLayout>} />
             <Route path="/instances" element={<AppLayout><Instances /></AppLayout>} />
             <Route path="/contacts" element={<AppLayout><Contacts /></AppLayout>} />
+            <Route path="/labels" element={<AppLayout><Labels /></AppLayout>} />
             <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
             <Route path="/chatbot" element={<AppLayout><ChatbotFlows /></AppLayout>} />
             <Route path="/chatbot/:flowId" element={<AppLayout><ChatbotEditor /></AppLayout>} />

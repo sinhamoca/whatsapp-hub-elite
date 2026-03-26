@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { useLocation, Link, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { MessageSquare, Server, Users, Settings, LogOut, Loader2, Bot } from 'lucide-react';
+import { MessageSquare, Server, Users, Settings, LogOut, Loader2, Bot, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -9,6 +9,7 @@ const navItems = [
   { path: '/', label: 'Conversas', icon: MessageSquare },
   { path: '/instances', label: 'Instâncias', icon: Server },
   { path: '/contacts', label: 'Contatos', icon: Users },
+  { path: '/labels', label: 'Etiquetas', icon: Tag },
   { path: '/chatbot', label: 'Chatbot', icon: Bot },
   { path: '/settings', label: 'Config', icon: Settings },
 ];
