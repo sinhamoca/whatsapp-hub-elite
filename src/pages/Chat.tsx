@@ -767,6 +767,10 @@ export default function Chat() {
                 <p className="text-xs text-muted-foreground">Instância</p>
                 <p className="text-sm text-foreground flex-1">{selectedInstance?.name}</p>
               </div>
+
+              {conversation && (
+                <ContactLabels contactJid={conversation.jid} instanceId={conversation.instance_id} />
+              )}
             </div>
           </div>
         </SheetContent>
