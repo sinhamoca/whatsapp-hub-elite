@@ -641,21 +641,38 @@ Deno.serve(async (req) => {
     }
 
     // Upsert conversation
-    const contactName = pushName || remoteJid.split("@")[0];
+    // Only use pushName for contact_name when the message is NOT from me,
+    // otherwise it would overwrite the contact's name with our own name.
+    const contactName = fromMe ? "" : (pushName || remoteJid.split("@")[0]);
+
+    // Check if conversation already exists to avoid overwriting contact_name with empty string
+    const { data: existingConv } = await supabase
+      .from("conversations")
+      .select("id, contact_name")
+      .eq("instance_id", instanceId)
+      .eq("jid", remoteJid)
+      .maybeSingle();
+
+    const upsertPayload: Record<string, any> = {
+      user_id: userId,
+      instance_id: instanceId,
+      jid: remoteJid,
+      last_message: body.substring(0, 200),
+      last_message_at: timestamp,
+      unread_count: fromMe ? 0 : 1,
+    };
+
+    // Only set contact_name if we have a real name (not from ourselves)
+    if (contactName) {
+      upsertPayload.contact_name = contactName;
+    } else if (!existingConv) {
+      // New conversation from our own message — use JID as fallback
+      upsertPayload.contact_name = remoteJid.split("@")[0];
+    }
+
     const { data: conversation } = await supabase
       .from("conversations")
-      .upsert(
-        {
-          user_id: userId,
-          instance_id: instanceId,
-          jid: remoteJid,
-          contact_name: contactName,
-          last_message: body.substring(0, 200),
-          last_message_at: timestamp,
-          unread_count: fromMe ? 0 : 1,
-        },
-        { onConflict: "instance_id,jid" }
-      )
+      .upsert(upsertPayload, { onConflict: "instance_id,jid" })
       .select("id")
       .single();
 
