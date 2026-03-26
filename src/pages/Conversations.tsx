@@ -18,6 +18,7 @@ interface Conversation {
   instance_id: string;
   instance_name?: string;
   avatar_url?: string;
+  labels?: { id: string; name: string; color: string }[];
 }
 
 export default function Conversations() {
@@ -32,24 +33,48 @@ export default function Conversations() {
   const fetchData = useCallback(async () => {
     if (!user) return;
 
-    const [convRes, instRes] = await Promise.all([
-      supabase
-        .from('conversations')
-        .select('*')
-        .order('last_message_at', { ascending: false }),
+    const [convRes, instRes, contactsRes, labelsRes, clRes] = await Promise.all([
+      supabase.from('conversations').select('*').order('last_message_at', { ascending: false }),
       supabase.from('instances').select('id, name'),
+      supabase.from('contacts').select('id, jid, instance_id'),
+      supabase.from('labels').select('id, name, color'),
+      supabase.from('contact_labels').select('contact_id, label_id'),
     ]);
 
-    const instMap = new Map(
-      (instRes.data || []).map((i: any) => [i.id, i.name])
-    );
+    const instMap = new Map((instRes.data || []).map((i: any) => [i.id, i.name]));
+
+    // Build contact_id lookup by jid+instance
+    const contactIdMap = new Map<string, string>();
+    for (const c of contactsRes.data || []) {
+      contactIdMap.set(`${(c as any).instance_id}:${(c as any).jid}`, (c as any).id);
+    }
+
+    // Build label lookup
+    const labelMap = new Map<string, { id: string; name: string; color: string }>();
+    for (const l of labelsRes.data || []) {
+      labelMap.set((l as any).id, l as any);
+    }
+
+    // Build contact→labels map
+    const contactLabelsMap = new Map<string, { id: string; name: string; color: string }[]>();
+    for (const cl of clRes.data || []) {
+      const label = labelMap.get((cl as any).label_id);
+      if (!label) continue;
+      const arr = contactLabelsMap.get((cl as any).contact_id) || [];
+      arr.push(label);
+      contactLabelsMap.set((cl as any).contact_id, arr);
+    }
 
     setInstances((instRes.data || []) as any);
     setConversations(
-      (convRes.data || []).map((c: any) => ({
-        ...c,
-        instance_name: instMap.get(c.instance_id) || 'Desconhecido',
-      }))
+      (convRes.data || []).map((c: any) => {
+        const contactId = contactIdMap.get(`${c.instance_id}:${c.jid}`);
+        return {
+          ...c,
+          instance_name: instMap.get(c.instance_id) || 'Desconhecido',
+          labels: contactId ? contactLabelsMap.get(contactId) || [] : [],
+        };
+      })
     );
     setLoading(false);
   }, [user]);
@@ -175,9 +200,16 @@ export default function Conversations() {
                     </span>
                   )}
                 </div>
-                <Badge variant="secondary" className="mt-1 text-[10px] px-1.5 py-0 bg-primary/10 text-primary">
-                  {conv.instance_name}
-                </Badge>
+                <div className="flex items-center gap-1 mt-1 flex-wrap">
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary">
+                    {conv.instance_name}
+                  </Badge>
+                  {(conv.labels || []).map(l => (
+                    <Badge key={l.id} className="text-[10px] px-1.5 py-0 text-white border-0" style={{ backgroundColor: l.color }}>
+                      {l.name}
+                    </Badge>
+                  ))}
+                </div>
               </div>
             </motion.button>
           ))

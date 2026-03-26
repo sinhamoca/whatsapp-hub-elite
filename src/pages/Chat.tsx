@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, Send, Paperclip, Mic, Image, FileText, Video, ChevronDown, Loader2, Square, Trash2, Pencil, X, Check, Phone, Copy } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
@@ -50,6 +51,7 @@ export default function Chat() {
   const [editingMsg, setEditingMsg] = useState<Message | null>(null);
   const [editText, setEditText] = useState('');
   const [showProfile, setShowProfile] = useState(false);
+  const [contactLabels, setContactLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -141,12 +143,12 @@ export default function Chat() {
 
     const { data: contactData } = await supabase
       .from('contacts')
-      .select('phone')
+      .select('id, phone')
       .eq('jid', convData.jid)
       .eq('instance_id', convData.instance_id)
       .maybeSingle();
 
-    const phone = (contactData?.phone || '').replace(/\D/g, '');
+    const phone = ((contactData as any)?.phone || '').replace(/\D/g, '');
     const jidLocalPart = convData.jid.split('@')[0] || '';
     const isLidJid = convData.jid.endsWith('@lid');
 
@@ -154,6 +156,26 @@ export default function Chat() {
       setContactPhone(phone);
     } else {
       setContactPhone('');
+    }
+
+    // Fetch labels for this contact
+    if ((contactData as any)?.id) {
+      const { data: clData } = await supabase
+        .from('contact_labels')
+        .select('label_id')
+        .eq('contact_id', (contactData as any).id);
+      if (clData && clData.length > 0) {
+        const labelIds = (clData as any[]).map((cl: any) => cl.label_id);
+        const { data: labelsData } = await supabase
+          .from('labels')
+          .select('id, name, color')
+          .in('id', labelIds);
+        setContactLabels((labelsData || []) as any);
+      } else {
+        setContactLabels([]);
+      }
+    } else {
+      setContactLabels([]);
     }
 
     const msgRes = await supabase
@@ -489,7 +511,14 @@ export default function Chat() {
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-sm text-foreground">{conversation?.contact_name || 'Chat'}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="font-medium text-sm text-foreground truncate">{conversation?.contact_name || 'Chat'}</p>
+              {contactLabels.slice(0, 3).map(l => (
+                <Badge key={l.id} className="text-[9px] px-1.5 py-0 text-white border-0 shrink-0" style={{ backgroundColor: l.color }}>
+                  {l.name}
+                </Badge>
+              ))}
+            </div>
             <p className="text-xs text-muted-foreground">
               {contactPhone || (conversation?.jid?.endsWith('@lid') ? '' : conversation?.jid?.split('@')[0])}
             </p>
