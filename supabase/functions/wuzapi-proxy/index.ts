@@ -73,11 +73,17 @@ Deno.serve(async (req) => {
 
     const isStatusEndpoint = ["/api/status", "/session/status", "/status"].includes(requestedEndpoint);
     const isQrEndpoint = ["/api/qrcode", "/session/qr", "/qrcode"].includes(requestedEndpoint);
+    const isDeleteEndpoint = ["/chat/delete", "/chat/revokemessage"].includes(requestedEndpoint);
+    const isEditEndpoint = ["/chat/send/edit", "/chat/editmessage"].includes(requestedEndpoint);
 
     const endpointCandidates = isStatusEndpoint
       ? [requestedEndpoint, "/session/status", "/status", "/api/status"]
       : isQrEndpoint
       ? [requestedEndpoint, "/session/qr", "/qrcode", "/api/qrcode"]
+      : isDeleteEndpoint
+      ? [requestedEndpoint, "/chat/delete", "/chat/revokemessage"]
+      : isEditEndpoint
+      ? [requestedEndpoint, "/chat/send/edit", "/chat/editmessage"]
       : [requestedEndpoint];
 
     const uniqueCandidates = [...new Set(endpointCandidates)];
