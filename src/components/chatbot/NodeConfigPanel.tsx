@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, Trash2, GripVertical, X, Image, Video, Type } from 'lucide-react';
+import { Plus, Trash2, GripVertical, X, Image, Video, Type, Upload, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface NodeResponse {
@@ -44,6 +44,9 @@ export default function NodeConfigPanel({ nodeId, nodeName, nodeType, absenceMes
   const [absTime, setAbsTime] = useState(absenceTimeout);
   const [selLabel, setSelLabel] = useState(labelId || 'none');
   const [loading, setLoading] = useState(true);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetRef = useRef<{ id: string; type: string } | null>(null);
 
   useEffect(() => {
     loadResponses();
@@ -94,6 +97,36 @@ export default function NodeConfigPanel({ nodeId, nodeName, nodeType, absenceMes
   const deleteResponse = async (id: string) => {
     await supabase.from('chatbot_node_responses').delete().eq('id', id);
     setResponses(r => r.filter(res => res.id !== id));
+  };
+
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const target = uploadTargetRef.current;
+    if (!file || !target) return;
+    e.target.value = '';
+
+    setUploadingId(target.id);
+    try {
+      const ext = file.name.split('.').pop() || 'bin';
+      const path = `chatbot/${nodeId}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('media').upload(path, file);
+      if (upErr) throw upErr;
+
+      const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
+      await updateResponse(target.id, 'media_url', urlData.publicUrl);
+      toast.success('Mídia enviada');
+    } catch (err: any) {
+      toast.error('Erro ao enviar mídia: ' + err.message);
+    }
+    setUploadingId(null);
+  };
+
+  const triggerUpload = (id: string, type: string) => {
+    uploadTargetRef.current = { id, type };
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = type === 'image' ? 'image/*' : 'video/*';
+      fileInputRef.current.click();
+    }
   };
 
   return (
@@ -149,13 +182,28 @@ export default function NodeConfigPanel({ nodeId, nodeName, nodeType, absenceMes
                     className="text-xs min-h-[60px]"
                   />
                 ) : (
-                  <div className="space-y-1">
-                    <Input
-                      placeholder="URL da mídia"
-                      value={res.media_url}
-                      onChange={e => updateResponse(res.id, 'media_url', e.target.value)}
-                      className="h-7 text-xs"
-                    />
+                  <div className="space-y-1.5">
+                    {res.media_url ? (
+                      <div className="flex items-center gap-2 p-1.5 rounded bg-secondary/50 border border-border">
+                        {res.response_type === 'image' ? <Image className="h-3.5 w-3.5 text-primary shrink-0" /> : <Video className="h-3.5 w-3.5 text-primary shrink-0" />}
+                        <span className="text-[10px] flex-1 truncate text-muted-foreground">{res.media_url.split('/').pop()}</span>
+                        <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" onClick={() => updateResponse(res.id, 'media_url', '')}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full text-xs h-7 gap-1.5"
+                        disabled={uploadingId === res.id}
+                        onClick={() => triggerUpload(res.id, res.response_type)}
+                      >
+                        {uploadingId === res.id
+                          ? <><Loader2 className="h-3 w-3 animate-spin" /> Enviando...</>
+                          : <><Upload className="h-3 w-3" /> Selecionar {res.response_type === 'image' ? 'imagem' : 'vídeo'}</>}
+                      </Button>
+                    )}
                     <Input
                       placeholder="Legenda (opcional)"
                       value={res.content}
@@ -240,6 +288,7 @@ export default function NodeConfigPanel({ nodeId, nodeName, nodeType, absenceMes
           </div>
         </div>
       </ScrollArea>
+      <input ref={fileInputRef} type="file" className="hidden" onChange={handleMediaUpload} />
     </div>
   );
 }
