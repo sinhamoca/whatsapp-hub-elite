@@ -542,6 +542,12 @@ export default function Chat() {
                 )}
                 <p className="text-sm text-foreground">{msg.body}</p>
                 <p className="text-[10px] text-muted-foreground text-right mt-1">{formatTime(msg.timestamp)}</p>
+              </div>
+            </motion.div>
+          ))
+        )}
+        <div ref={bottomRef} />
+      </div>
 
       {/* Input */}
       <div className="p-3 border-t border-border bg-card/50 backdrop-blur-sm">
