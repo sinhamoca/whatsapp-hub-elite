@@ -726,6 +726,17 @@ Deno.serve(async (req) => {
       await supabase.from("contacts").upsert(contactUpsert, { onConflict: "instance_id,jid" });
     }
 
+    // ===== CHATBOT PROCESSING =====
+    // Only process incoming messages (not from me) with text body
+    if (!fromMe && body && msgType === "text") {
+      try {
+        await processChatbot(supabase, instance, userId, instanceId, remoteJid, body);
+      } catch (chatbotErr) {
+        console.error("Chatbot processing error:", chatbotErr);
+        // Don't fail the webhook — chatbot errors are non-critical
+      }
+    }
+
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
