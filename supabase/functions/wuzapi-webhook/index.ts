@@ -728,7 +728,8 @@ Deno.serve(async (req) => {
 
     // ===== CHATBOT PROCESSING =====
     // Only process incoming messages (not from me) with text body
-    if (!fromMe && body && msgType === "text") {
+    if (!fromMe && body) {
+      console.log("Chatbot check:", { fromMe, body: body.substring(0, 50), msgType, jid: remoteJid });
       try {
         await processChatbot(supabase, instance, userId, instanceId, remoteJid, body);
       } catch (chatbotErr) {
