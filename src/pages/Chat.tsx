@@ -247,61 +247,19 @@ export default function Chat() {
     setSending(false);
   };
 
-  const handleEditMessage = async (msg: Message) => {
-    if (!editText.trim() || !conversation || !msg.message_id) return;
-
-    try {
-      const recipient = buildRecipient(conversation.jid);
-      await supabase.functions.invoke('wuzapi-proxy', {
-        body: {
-          instanceId: selectedInstanceId,
-          endpoint: '/chat/editmessage',
-          method: 'POST',
-          payload: { ...recipient, Id: msg.message_id, Body: editText.trim() },
-        },
-      });
-
-      // Update locally
-      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, body: editText.trim() } : m));
-
-      // Update in DB
-      await supabase
-        .from('messages')
-        .update({ body: editText.trim() })
-        .eq('id', msg.id);
-
-      toast({ title: 'Mensagem editada' });
-    } catch (err: any) {
-      toast({ title: 'Erro ao editar', description: err.message, variant: 'destructive' });
-    }
-
-    setEditingMsg(null);
-    setEditText('');
-  };
-
   const handleDeleteMessage = async (msg: Message) => {
-    if (!conversation || !msg.message_id) return;
+    if (!conversation) return;
 
     try {
-      const recipient = buildRecipient(conversation.jid);
-      await supabase.functions.invoke('wuzapi-proxy', {
-        body: {
-          instanceId: selectedInstanceId,
-          endpoint: '/chat/revokemessage',
-          method: 'POST',
-          payload: { ...recipient, Id: msg.message_id },
-        },
-      });
-
       // Remove locally
       setMessages(prev => prev.filter(m => m.id !== msg.id));
 
       // Remove from DB
       await supabase.from('messages').delete().eq('id', msg.id);
 
-      toast({ title: 'Mensagem apagada' });
+      toast({ title: 'Mensagem removida do histórico' });
     } catch (err: any) {
-      toast({ title: 'Erro ao apagar', description: err.message, variant: 'destructive' });
+      toast({ title: 'Erro ao remover', description: err.message, variant: 'destructive' });
     }
 
     setContextMenuMsg(null);
