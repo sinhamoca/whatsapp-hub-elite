@@ -2,8 +2,9 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Send, Paperclip, Mic, Image, FileText, Video, ChevronDown, Loader2, Square, Trash2, Pencil, X, Check } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, Mic, Image, FileText, Video, ChevronDown, Loader2, Square, Trash2, Pencil, X, Check, Phone, Copy } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
@@ -47,6 +48,7 @@ export default function Chat() {
   const [contextMenuMsg, setContextMenuMsg] = useState<string | null>(null);
   const [editingMsg, setEditingMsg] = useState<Message | null>(null);
   const [editText, setEditText] = useState('');
+  const [showProfile, setShowProfile] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -477,19 +479,21 @@ export default function Chat() {
         <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        {conversation?.avatar_url ? (
-          <img src={conversation.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover" />
-        ) : (
-          <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold text-foreground">
-            {conversation?.contact_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '??'}
+        <button className="flex items-center gap-3 flex-1 min-w-0 text-left" onClick={() => setShowProfile(true)}>
+          {conversation?.avatar_url ? (
+            <img src={conversation.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover" />
+          ) : (
+            <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold text-foreground">
+              {conversation?.contact_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '??'}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-sm text-foreground">{conversation?.contact_name || 'Chat'}</p>
+            <p className="text-xs text-muted-foreground">
+              {contactPhone || (conversation?.jid?.endsWith('@lid') ? '' : conversation?.jid?.split('@')[0])}
+            </p>
           </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm text-foreground">{conversation?.contact_name || 'Chat'}</p>
-          <p className="text-xs text-muted-foreground">
-            {contactPhone || (conversation?.jid?.endsWith('@lid') ? '' : conversation?.jid?.split('@')[0])}
-          </p>
-        </div>
+        </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="text-xs gap-1">
@@ -711,6 +715,61 @@ export default function Chat() {
           </p>
         )}
       </div>
+
+      {/* Contact Profile Sheet */}
+      <Sheet open={showProfile} onOpenChange={setShowProfile}>
+        <SheetContent side="right" className="w-80 sm:w-96 bg-background border-border">
+          <SheetHeader>
+            <SheetTitle className="text-foreground">Perfil do contato</SheetTitle>
+          </SheetHeader>
+          <div className="flex flex-col items-center gap-4 mt-6">
+            {conversation?.avatar_url ? (
+              <img src={conversation.avatar_url} alt="" className="w-28 h-28 rounded-full object-cover border-2 border-border" />
+            ) : (
+              <div className="w-28 h-28 rounded-full bg-secondary flex items-center justify-center text-3xl font-bold text-foreground">
+                {conversation?.contact_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '??'}
+              </div>
+            )}
+            <h2 className="text-lg font-semibold text-foreground">{conversation?.contact_name || 'Desconhecido'}</h2>
+
+            <div className="w-full space-y-3 mt-4">
+              {(contactPhone || (!conversation?.jid?.endsWith('@lid') && conversation?.jid?.split('@')[0])) && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
+                  <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-muted-foreground">Telefone</p>
+                    <p className="text-sm font-medium text-foreground">
+                      {contactPhone || conversation?.jid?.split('@')[0]}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      const phone = contactPhone || conversation?.jid?.split('@')[0] || '';
+                      navigator.clipboard.writeText(phone);
+                      toast({ title: 'Número copiado!' });
+                    }}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
+                <p className="text-xs text-muted-foreground">JID</p>
+                <p className="text-xs text-foreground font-mono truncate flex-1">{conversation?.jid}</p>
+              </div>
+
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
+                <p className="text-xs text-muted-foreground">Instância</p>
+                <p className="text-sm text-foreground flex-1">{selectedInstance?.name}</p>
+              </div>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
