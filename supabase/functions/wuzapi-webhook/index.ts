@@ -1127,7 +1127,7 @@ async function sendTextMessage(apiUrl: string, token: string, jid: string, text:
         headers: {
           "Content-Type": "application/json",
           Token: token,
-          Authorization: token,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ ...recipient, Body: text }),
       });
@@ -1136,7 +1136,15 @@ async function sendTextMessage(apiUrl: string, token: string, jid: string, text:
         console.log("Chatbot text sent via", endpoint);
         return;
       }
-    } catch {
+
+      const failBody = await resp.text().catch(() => "");
+      console.warn("Chatbot text send failed", {
+        endpoint,
+        status: resp.status,
+        body: failBody.slice(0, 200),
+      });
+    } catch (err) {
+      console.warn("Chatbot text send exception", { endpoint, error: String(err) });
       continue;
     }
   }
@@ -1166,7 +1174,7 @@ async function sendMediaMessage(
         headers: {
           "Content-Type": "application/json",
           Token: token,
-          Authorization: token,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ ...recipient, Url: mediaUrl, Caption: caption }),
       });
@@ -1175,7 +1183,15 @@ async function sendMediaMessage(
         console.log(`Chatbot ${type} sent via`, endpoint);
         return;
       }
-    } catch {
+
+      const failBody = await resp.text().catch(() => "");
+      console.warn(`Chatbot ${type} send failed`, {
+        endpoint,
+        status: resp.status,
+        body: failBody.slice(0, 200),
+      });
+    } catch (err) {
+      console.warn(`Chatbot ${type} send exception`, { endpoint, error: String(err) });
       continue;
     }
   }
