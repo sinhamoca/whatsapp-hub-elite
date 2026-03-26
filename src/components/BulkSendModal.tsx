@@ -224,7 +224,7 @@ export default function BulkSendModal({ open, onClose, contacts, labelName, labe
 
   return (
     <Dialog open={open} onOpenChange={v => !v && handleClose()}>
-      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="text-sm flex items-center gap-2">
             <Send className="h-4 w-4" />
