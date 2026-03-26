@@ -511,7 +511,14 @@ export default function Chat() {
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-sm text-foreground">{conversation?.contact_name || 'Chat'}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="font-medium text-sm text-foreground truncate">{conversation?.contact_name || 'Chat'}</p>
+              {contactLabels.slice(0, 3).map(l => (
+                <Badge key={l.id} className="text-[9px] px-1.5 py-0 text-white border-0 shrink-0" style={{ backgroundColor: l.color }}>
+                  {l.name}
+                </Badge>
+              ))}
+            </div>
             <p className="text-xs text-muted-foreground">
               {contactPhone || (conversation?.jid?.endsWith('@lid') ? '' : conversation?.jid?.split('@')[0])}
             </p>
