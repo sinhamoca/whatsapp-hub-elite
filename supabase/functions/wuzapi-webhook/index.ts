@@ -947,11 +947,11 @@ async function handleSessionStep(
   jid: string,
   messageBody: string,
   session: any,
-) {
+): Promise<boolean> {
   if (!session.current_node_id) {
     // Session has no current node — deactivate
     await supabase.from("chatbot_sessions").update({ is_active: false }).eq("id", session.id);
-    return;
+    return false;
   }
 
   // Get edges from current node
@@ -963,7 +963,7 @@ async function handleSessionStep(
   if (!edges || edges.length === 0) {
     // No outgoing edges — end of flow
     await supabase.from("chatbot_sessions").update({ is_active: false }).eq("id", session.id);
-    return;
+    return false;
   }
 
   const matchedEdge = findMatchingEdge(edges, messageBody);
@@ -972,7 +972,7 @@ async function handleSessionStep(
     await supabase.from("chatbot_sessions")
       .update({ last_interaction_at: new Date().toISOString() })
       .eq("id", session.id);
-    return;
+    return true;
   }
 
   // Move to next node
@@ -985,6 +985,7 @@ async function handleSessionStep(
 
   // Execute the target node
   await executeNode(supabase, instance, userId, instanceId, jid, matchedEdge.target_node_id);
+  return true;
 }
 
 function findMatchingEdge(edges: any[], messageBody: string): any | null {
