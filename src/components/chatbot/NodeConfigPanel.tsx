@@ -44,6 +44,9 @@ export default function NodeConfigPanel({ nodeId, nodeName, nodeType, absenceMes
   const [absTime, setAbsTime] = useState(absenceTimeout);
   const [selLabel, setSelLabel] = useState(labelId || 'none');
   const [loading, setLoading] = useState(true);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetRef = useRef<{ id: string; type: string } | null>(null);
 
   useEffect(() => {
     loadResponses();
