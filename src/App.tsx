@@ -11,6 +11,8 @@ import Chat from "./pages/Chat";
 import Instances from "./pages/Instances";
 import Contacts from "./pages/Contacts";
 import SettingsPage from "./pages/SettingsPage";
+import ChatbotFlows from "./pages/ChatbotFlows";
+import ChatbotEditor from "./pages/ChatbotEditor";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
