@@ -728,7 +728,8 @@ Deno.serve(async (req) => {
 
     // ===== CHATBOT PROCESSING =====
     // Only process incoming messages (not from me) with text body
-    if (!fromMe && body && msgType === "text") {
+    if (!fromMe && body) {
+      console.log("Chatbot check:", { fromMe, body: body.substring(0, 50), msgType, jid: remoteJid });
       try {
         await processChatbot(supabase, instance, userId, instanceId, remoteJid, body);
       } catch (chatbotErr) {
@@ -764,12 +765,13 @@ async function processChatbot(
   messageBody: string,
 ) {
   // 1. Get all active flows for this instance
-  const { data: flows } = await supabase
+  const { data: flows, error: flowsErr } = await supabase
     .from("chatbot_flows")
     .select("id, trigger_type, trigger_keywords, trigger_match_type")
     .eq("instance_id", instanceId)
     .eq("is_active", true);
 
+  console.log("Chatbot flows query:", { instanceId, flowCount: flows?.length || 0, error: flowsErr?.message || null });
   if (!flows || flows.length === 0) return;
 
   const flowIds = flows.map((f: any) => f.id);
@@ -828,11 +830,14 @@ async function handleNewSession(
     });
   });
 
+  console.log("Chatbot trigger matching:", { msgLower, matchedCount: matchedFlows.length, flows: flows.map((f: any) => ({ id: f.id, type: f.trigger_type, keywords: f.trigger_keywords, match: f.trigger_match_type })) });
+
   if (matchedFlows.length === 0) return;
 
   // Use first matched flow (keyword matches take priority over "any")
   const keywordFlows = matchedFlows.filter((f: any) => (f.trigger_type || "keyword") === "keyword");
   const selectedFlow = keywordFlows.length > 0 ? keywordFlows[0] : matchedFlows[0];
+  console.log("Selected flow:", selectedFlow.id);
 
   // Find start node for this flow
   const { data: startNodes } = await supabase
