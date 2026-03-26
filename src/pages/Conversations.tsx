@@ -18,6 +18,7 @@ interface Conversation {
   instance_id: string;
   instance_name?: string;
   avatar_url?: string;
+  labels?: { id: string; name: string; color: string }[];
 }
 
 export default function Conversations() {
