@@ -34,7 +34,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Service role client for storage uploads
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -72,178 +71,174 @@ Deno.serve(async (req) => {
     };
 
     // 1. Fetch all contacts from WuzAPI
-    console.log("Fetching contacts from WuzAPI...");
+    console.log("Fetching contacts from WuzAPI:", `${apiUrl}/user/contacts`);
     const contactsRes = await fetch(`${apiUrl}/user/contacts`, {
       method: "GET",
       headers,
     });
 
     if (!contactsRes.ok) {
-      console.error("Failed to fetch contacts:", contactsRes.status);
-      return new Response(JSON.stringify({ error: "Failed to fetch contacts from WuzAPI" }), {
+      const errText = await contactsRes.text();
+      console.error("Failed to fetch contacts:", contactsRes.status, errText);
+      return new Response(JSON.stringify({ error: "Failed to fetch contacts from WuzAPI", status: contactsRes.status }), {
         status: 502,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const contactsData = await contactsRes.json();
-    const contacts = contactsData?.data || contactsData?.Data || contactsData || {};
+    console.log("Contacts response type:", typeof contactsData, "keys:", Object.keys(contactsData || {}).slice(0, 5));
+
+    // WuzAPI may return contacts in different formats
+    let contacts: Record<string, any> = {};
+    if (contactsData && typeof contactsData === "object") {
+      // Could be { data: {...} } or direct map
+      if (contactsData.data && typeof contactsData.data === "object" && !Array.isArray(contactsData.data)) {
+        contacts = contactsData.data;
+      } else if (contactsData.Data && typeof contactsData.Data === "object") {
+        contacts = contactsData.Data;
+      } else if (Array.isArray(contactsData)) {
+        // Array format: convert to map
+        for (const c of contactsData) {
+          const jid = c.Jid || c.jid || c.Id || c.id;
+          if (jid) contacts[jid] = c;
+        }
+      } else if (Array.isArray(contactsData.data)) {
+        for (const c of contactsData.data) {
+          const jid = c.Jid || c.jid || c.Id || c.id;
+          if (jid) contacts[jid] = c;
+        }
+      } else {
+        // Assume it's already a JID -> info map
+        contacts = contactsData;
+      }
+    }
+
+    console.log("Total contacts found:", Object.keys(contacts).length);
+    // Log first 3 contacts for debugging
+    const sampleKeys = Object.keys(contacts).slice(0, 3);
+    for (const k of sampleKeys) {
+      console.log("Sample contact:", k, JSON.stringify(contacts[k]).slice(0, 200));
+    }
 
     let synced = 0;
-    let avatarsSynced = 0;
 
     // Process each contact
-    for (const [jid, info] of Object.entries(contacts)) {
+    const entries = Object.entries(contacts);
+    for (const [jid, info] of entries) {
       if (!jid || !jid.includes("@") || jid.endsWith("@g.us") || jid === "status@broadcast") continue;
 
       const contactInfo = info as any;
-      const fullName = contactInfo?.FullName || contactInfo?.fullName || "";
+      const fullName = contactInfo?.FullName || contactInfo?.fullName || contactInfo?.Name || contactInfo?.name || "";
       const firstName = contactInfo?.FirstName || contactInfo?.firstName || "";
       const pushName = contactInfo?.PushName || contactInfo?.pushName || "";
       const businessName = contactInfo?.BusinessName || contactInfo?.businessName || "";
       const displayName = fullName || firstName || businessName || pushName || "";
 
-      if (!displayName) continue;
-
-      const phone = jid.endsWith("@s.whatsapp.net") ? jid.split("@")[0] : "";
+      // Extract phone from JID
+      const phone = jid.includes("@s.whatsapp.net") ? jid.split("@")[0] : 
+                     jid.includes("@lid") ? "" : jid.split("@")[0];
 
       // Upsert contact
-      await supabase.from("contacts").upsert(
+      const { error: upsertErr } = await supabase.from("contacts").upsert(
         {
           user_id: user.id,
           instance_id: instanceId,
           jid,
-          name: displayName,
-          push_name: pushName || displayName,
-          phone: phone || undefined,
+          name: displayName || phone || jid.split("@")[0],
+          push_name: pushName || displayName || "",
+          phone: phone || "",
         },
         { onConflict: "instance_id,jid" }
       );
 
+      if (upsertErr) {
+        console.warn("Upsert error for", jid, upsertErr.message);
+        continue;
+      }
+
       // Update conversation name if exists
-      await supabase
-        .from("conversations")
-        .update({ contact_name: displayName })
-        .eq("instance_id", instanceId)
-        .eq("jid", jid);
+      if (displayName || phone) {
+        await supabase
+          .from("conversations")
+          .update({ contact_name: displayName || phone || jid.split("@")[0] })
+          .eq("instance_id", instanceId)
+          .eq("jid", jid);
+      }
 
       synced++;
     }
 
     console.log(`Synced ${synced} contacts`);
 
-    // 2. Fetch avatars for conversations (limited to active conversations)
+    // 2. Fetch avatars for top 10 conversations only (to avoid timeout)
+    let avatarsSynced = 0;
     const { data: conversations } = await supabase
       .from("conversations")
       .select("jid")
       .eq("instance_id", instanceId)
       .eq("user_id", user.id)
       .order("last_message_at", { ascending: false })
-      .limit(50);
+      .limit(10);
 
     if (conversations && conversations.length > 0) {
       for (const conv of conversations) {
         try {
           const phoneForAvatar = conv.jid.split("@")[0];
+          
+          // Use POST for avatar endpoint (GET with body is not standard)
           const avatarRes = await fetch(`${apiUrl}/user/avatar`, {
-            method: "GET",
-            headers: {
-              ...headers,
-              "Content-Type": "application/json",
-            },
+            method: "POST",
+            headers,
             body: JSON.stringify({ Phone: phoneForAvatar, Preview: true }),
           });
 
-          // Some APIs don't allow body on GET, try POST
-          let avatarData: any = null;
-          if (avatarRes.ok) {
-            avatarData = await avatarRes.json();
-          }
+          if (!avatarRes.ok) continue;
 
-          if (!avatarData) {
-            const avatarRes2 = await fetch(`${apiUrl}/user/avatar`, {
-              method: "POST",
-              headers,
-              body: JSON.stringify({ Phone: phoneForAvatar, Preview: true }),
-            });
-            if (avatarRes2.ok) {
-              avatarData = await avatarRes2.json();
-            }
-          }
-
+          const avatarData = await avatarRes.json();
           const avatarUrl =
-            avatarData?.data?.URL ||
-            avatarData?.data?.Url ||
-            avatarData?.data?.url ||
-            avatarData?.URL ||
-            avatarData?.Url ||
-            avatarData?.url ||
-            "";
+            avatarData?.data?.URL || avatarData?.data?.Url || avatarData?.data?.url ||
+            avatarData?.URL || avatarData?.Url || avatarData?.url || "";
 
-          if (avatarUrl) {
-            // Download and upload to storage
-            try {
-              const imgRes = await fetch(avatarUrl);
-              if (imgRes.ok) {
-                const imgBuffer = await imgRes.arrayBuffer();
-                const filePath = `${instanceId}/${phoneForAvatar}.jpg`;
+          if (!avatarUrl) continue;
 
-                await supabase.storage
-                  .from("avatars")
-                  .upload(filePath, imgBuffer, {
-                    contentType: "image/jpeg",
-                    upsert: true,
-                  });
+          // Download and upload to storage
+          const imgRes = await fetch(avatarUrl);
+          if (!imgRes.ok) continue;
 
-                const { data: pubUrl } = supabase.storage
-                  .from("avatars")
-                  .getPublicUrl(filePath);
+          const imgBuffer = await imgRes.arrayBuffer();
+          const filePath = `${instanceId}/${phoneForAvatar}.jpg`;
 
-                const storedUrl = pubUrl?.publicUrl || "";
+          await supabase.storage.from("avatars").upload(filePath, imgBuffer, {
+            contentType: "image/jpeg",
+            upsert: true,
+          });
 
-                if (storedUrl) {
-                  await supabase
-                    .from("contacts")
-                    .update({ avatar_url: storedUrl })
-                    .eq("instance_id", instanceId)
-                    .eq("jid", conv.jid);
+          const { data: pubUrl } = supabase.storage.from("avatars").getPublicUrl(filePath);
+          const storedUrl = pubUrl?.publicUrl || "";
 
-                  await supabase
-                    .from("conversations")
-                    .update({ avatar_url: storedUrl })
-                    .eq("instance_id", instanceId)
-                    .eq("jid", conv.jid);
-
-                  avatarsSynced++;
-                }
-              }
-            } catch (imgErr) {
-              console.warn("Avatar download error for", conv.jid, imgErr);
-            }
+          if (storedUrl) {
+            await supabase.from("contacts").update({ avatar_url: storedUrl }).eq("instance_id", instanceId).eq("jid", conv.jid);
+            await supabase.from("conversations").update({ avatar_url: storedUrl }).eq("instance_id", instanceId).eq("jid", conv.jid);
+            avatarsSynced++;
           }
         } catch (err) {
-          console.warn("Avatar fetch error for", conv.jid, err);
+          console.warn("Avatar error for", conv.jid, err);
         }
       }
     }
 
-    console.log(`Synced ${avatarsSynced} avatars`);
+    console.log(`Synced ${avatarsSynced} avatars. Done.`);
 
     return new Response(
       JSON.stringify({ ok: true, contactsSynced: synced, avatarsSynced }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     console.error("Sync error:", err);
     return new Response(
       JSON.stringify({ error: err.message || "Internal error" }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
