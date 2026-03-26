@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { useLocation, Link, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { MessageSquare, Server, Users, Settings, LogOut, Loader2 } from 'lucide-react';
+import { MessageSquare, Server, Users, Settings, LogOut, Loader2, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
