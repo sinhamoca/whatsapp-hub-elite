@@ -830,11 +830,14 @@ async function handleNewSession(
     });
   });
 
+  console.log("Chatbot trigger matching:", { msgLower, matchedCount: matchedFlows.length, flows: flows.map((f: any) => ({ id: f.id, type: f.trigger_type, keywords: f.trigger_keywords, match: f.trigger_match_type })) });
+
   if (matchedFlows.length === 0) return;
 
   // Use first matched flow (keyword matches take priority over "any")
   const keywordFlows = matchedFlows.filter((f: any) => (f.trigger_type || "keyword") === "keyword");
   const selectedFlow = keywordFlows.length > 0 ? keywordFlows[0] : matchedFlows[0];
+  console.log("Selected flow:", selectedFlow.id);
 
   // Find start node for this flow
   const { data: startNodes } = await supabase
