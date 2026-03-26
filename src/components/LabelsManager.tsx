@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Trash2, Tag } from 'lucide-react';
+import { Plus, Trash2, Tag, Pencil, Check, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -24,6 +24,9 @@ export default function LabelsManager() {
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState(PRESET_COLORS[0]);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState('');
 
   const fetchLabels = useCallback(async () => {
     if (!user) return;
@@ -58,6 +61,24 @@ export default function LabelsManager() {
     await supabase.from('labels').delete().eq('id', id);
     fetchLabels();
     toast({ title: 'Etiqueta removida' });
+  };
+
+  const startEditing = (label: Label) => {
+    setEditingId(label.id);
+    setEditName(label.name);
+    setEditColor(label.color);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId || !editName.trim()) return;
+    const { error } = await supabase.from('labels').update({ name: editName.trim(), color: editColor }).eq('id', editingId);
+    if (error) {
+      toast({ title: 'Erro ao editar', variant: 'destructive' });
+      return;
+    }
+    setEditingId(null);
+    fetchLabels();
+    toast({ title: 'Etiqueta atualizada!' });
   };
 
   if (loading) return null;
@@ -104,16 +125,58 @@ export default function LabelsManager() {
         <div className="space-y-2">
           {labels.map(label => (
             <div key={label.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-secondary/30">
-              <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
-              <span className="text-sm text-foreground flex-1">{label.name}</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                onClick={() => handleDelete(label.id)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+              {editingId === label.id ? (
+                <>
+                  <div className="flex gap-1 items-center">
+                    {PRESET_COLORS.map(c => (
+                      <button
+                        key={c}
+                        onClick={() => setEditColor(c)}
+                        className="w-4 h-4 rounded-full border-2 transition-transform shrink-0"
+                        style={{
+                          backgroundColor: c,
+                          borderColor: c === editColor ? 'hsl(var(--foreground))' : 'transparent',
+                          transform: c === editColor ? 'scale(1.15)' : 'scale(1)',
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <Input
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSaveEdit()}
+                    className="flex-1 h-7 text-sm bg-secondary/50 border-border"
+                    autoFocus
+                  />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={handleSaveEdit}>
+                    <Check className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => setEditingId(null)}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
+                  <span className="text-sm text-foreground flex-1">{label.name}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => startEditing(label)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => handleDelete(label.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
             </div>
           ))}
         </div>
