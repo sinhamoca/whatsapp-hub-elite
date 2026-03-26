@@ -200,9 +200,16 @@ export default function Conversations() {
                     </span>
                   )}
                 </div>
-                <Badge variant="secondary" className="mt-1 text-[10px] px-1.5 py-0 bg-primary/10 text-primary">
-                  {conv.instance_name}
-                </Badge>
+                <div className="flex items-center gap-1 mt-1 flex-wrap">
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary">
+                    {conv.instance_name}
+                  </Badge>
+                  {(conv.labels || []).map(l => (
+                    <Badge key={l.id} className="text-[10px] px-1.5 py-0 text-white border-0" style={{ backgroundColor: l.color }}>
+                      {l.name}
+                    </Badge>
+                  ))}
+                </div>
               </div>
             </motion.button>
           ))
