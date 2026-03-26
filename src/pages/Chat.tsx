@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Send, Paperclip, Mic, Image, FileText, Video, ChevronDown, Loader2, Square, Trash2 } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, Mic, Image, FileText, Video, ChevronDown, Loader2, Square, Trash2, Pencil, X, Check } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
@@ -45,6 +45,8 @@ export default function Chat() {
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [contextMenuMsg, setContextMenuMsg] = useState<string | null>(null);
+  const [editingMsg, setEditingMsg] = useState<Message | null>(null);
+  const [editText, setEditText] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -251,17 +253,67 @@ export default function Chat() {
     if (!conversation) return;
 
     try {
+      // Try to delete on WhatsApp if we have a message_id
+      if (msg.message_id) {
+        const recipient = buildRecipient(conversation.jid);
+        await supabase.functions.invoke('wuzapi-proxy', {
+          body: {
+            instanceId: selectedInstanceId,
+            endpoint: '/chat/delete',
+            method: 'POST',
+            payload: { ...recipient, Id: msg.message_id, FromMe: true },
+          },
+        });
+      }
+
       // Remove locally
       setMessages(prev => prev.filter(m => m.id !== msg.id));
-
-      // Remove from DB
       await supabase.from('messages').delete().eq('id', msg.id);
 
-      toast({ title: 'Mensagem removida do histórico' });
+      toast({ title: 'Mensagem apagada' });
     } catch (err: any) {
-      toast({ title: 'Erro ao remover', description: err.message, variant: 'destructive' });
+      toast({ title: 'Erro ao apagar', description: err.message, variant: 'destructive' });
     }
 
+    setContextMenuMsg(null);
+  };
+
+  const handleEditMessage = async () => {
+    if (!editingMsg || !editText.trim() || !conversation) return;
+
+    if (!editingMsg.message_id) {
+      toast({ title: 'Não é possível editar', description: 'Mensagem sem ID do WhatsApp', variant: 'destructive' });
+      setEditingMsg(null);
+      return;
+    }
+
+    try {
+      const recipient = buildRecipient(conversation.jid);
+      await supabase.functions.invoke('wuzapi-proxy', {
+        body: {
+          instanceId: selectedInstanceId,
+          endpoint: '/chat/send/edit',
+          method: 'POST',
+          payload: { ...recipient, Id: editingMsg.message_id, Body: editText.trim() },
+        },
+      });
+
+      // Update locally
+      setMessages(prev => prev.map(m => m.id === editingMsg.id ? { ...m, body: editText.trim() } : m));
+      await supabase.from('messages').update({ body: editText.trim() }).eq('id', editingMsg.id);
+
+      toast({ title: 'Mensagem editada' });
+    } catch (err: any) {
+      toast({ title: 'Erro ao editar', description: err.message, variant: 'destructive' });
+    }
+
+    setEditingMsg(null);
+    setEditText('');
+  };
+
+  const startEditing = (msg: Message) => {
+    setEditingMsg(msg);
+    setEditText(msg.body || '');
     setContextMenuMsg(null);
   };
 
@@ -494,6 +546,19 @@ export default function Chat() {
                 {/* Context menu for sent messages */}
                 {msg.from_me && contextMenuMsg === msg.id && (
                   <div className="absolute -top-10 right-0 z-50 flex gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
+                    {msg.msg_type === 'text' && msg.message_id && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startEditing(msg);
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -508,9 +573,19 @@ export default function Chat() {
                   </div>
                 )}
 
-                {/* Action button on hover for sent messages */}
+                {/* Action buttons on hover for sent messages */}
                 {msg.from_me && contextMenuMsg !== msg.id && (
                   <div className="absolute -top-8 right-0 hidden group-hover:flex gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
+                    {msg.msg_type === 'text' && msg.message_id && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                        onClick={() => startEditing(msg)}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -518,6 +593,25 @@ export default function Chat() {
                       onClick={() => handleDeleteMessage(msg)}
                     >
                       <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+
+                {/* Inline edit mode */}
+                {editingMsg?.id === msg.id && (
+                  <div className="flex items-center gap-1 mb-1">
+                    <Input
+                      value={editText}
+                      onChange={e => setEditText(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleEditMessage()}
+                      className="h-7 text-xs bg-background/50"
+                      autoFocus
+                    />
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-primary" onClick={handleEditMessage}>
+                      <Check className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={() => { setEditingMsg(null); setEditText(''); }}>
+                      <X className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 )}
