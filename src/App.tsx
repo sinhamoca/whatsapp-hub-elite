@@ -11,6 +11,8 @@ import Chat from "./pages/Chat";
 import Instances from "./pages/Instances";
 import Contacts from "./pages/Contacts";
 import SettingsPage from "./pages/SettingsPage";
+import ChatbotFlows from "./pages/ChatbotFlows";
+import ChatbotEditor from "./pages/ChatbotEditor";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,6 +31,8 @@ const App = () => (
             <Route path="/instances" element={<AppLayout><Instances /></AppLayout>} />
             <Route path="/contacts" element={<AppLayout><Contacts /></AppLayout>} />
             <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
+            <Route path="/chatbot" element={<AppLayout><ChatbotFlows /></AppLayout>} />
+            <Route path="/chatbot/:flowId" element={<AppLayout><ChatbotEditor /></AppLayout>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
