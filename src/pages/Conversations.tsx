@@ -71,10 +71,14 @@ export default function Conversations() {
   }, [fetchData]);
 
   const filtered = conversations.filter(c => {
+    const s = search.toLowerCase();
+    const searchDigits = search.replace(/\D/g, '');
+    const jidLocal = c.jid.split('@')[0] || '';
     const matchSearch =
-      c.contact_name.toLowerCase().includes(search.toLowerCase()) ||
-      c.last_message.toLowerCase().includes(search.toLowerCase()) ||
-      c.jid.includes(search);
+      c.contact_name.toLowerCase().includes(s) ||
+      c.last_message.toLowerCase().includes(s) ||
+      c.jid.includes(s) ||
+      (searchDigits.length >= 3 && jidLocal.includes(searchDigits));
     const matchFilter = !filterInstance || c.instance_id === filterInstance;
     return matchSearch && matchFilter;
   });
