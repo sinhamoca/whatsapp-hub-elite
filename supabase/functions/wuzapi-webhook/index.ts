@@ -1109,8 +1109,16 @@ async function executeNode(
   }
 }
 
+function buildRecipient(jid: string) {
+  if (jid.endsWith("@lid")) {
+    return { Phone: jid };
+  }
+  return { Phone: jid.split("@")[0] };
+}
+
 async function sendTextMessage(apiUrl: string, token: string, jid: string, text: string) {
   const endpoints = ["/chat/send/text", "/send/text", "/chat/sendmessage"];
+  const recipient = buildRecipient(jid);
 
   for (const endpoint of endpoints) {
     try {
@@ -1119,16 +1127,24 @@ async function sendTextMessage(apiUrl: string, token: string, jid: string, text:
         headers: {
           "Content-Type": "application/json",
           Token: token,
-          Authorization: token,
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ Phone: jid.split("@")[0], Body: text }),
+        body: JSON.stringify({ ...recipient, Body: text }),
       });
 
       if (resp.ok) {
         console.log("Chatbot text sent via", endpoint);
         return;
       }
-    } catch {
+
+      const failBody = await resp.text().catch(() => "");
+      console.warn("Chatbot text send failed", {
+        endpoint,
+        status: resp.status,
+        body: failBody.slice(0, 200),
+      });
+    } catch (err) {
+      console.warn("Chatbot text send exception", { endpoint, error: String(err) });
       continue;
     }
   }
@@ -1149,7 +1165,7 @@ async function sendMediaMessage(
   };
 
   const endpoints = endpointMap[type] || endpointMap.image;
-  const phone = jid.split("@")[0];
+  const recipient = buildRecipient(jid);
 
   for (const endpoint of endpoints) {
     try {
@@ -1158,16 +1174,24 @@ async function sendMediaMessage(
         headers: {
           "Content-Type": "application/json",
           Token: token,
-          Authorization: token,
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ Phone: phone, Url: mediaUrl, Caption: caption }),
+        body: JSON.stringify({ ...recipient, Url: mediaUrl, Caption: caption }),
       });
 
       if (resp.ok) {
         console.log(`Chatbot ${type} sent via`, endpoint);
         return;
       }
-    } catch {
+
+      const failBody = await resp.text().catch(() => "");
+      console.warn(`Chatbot ${type} send failed`, {
+        endpoint,
+        status: resp.status,
+        body: failBody.slice(0, 200),
+      });
+    } catch (err) {
+      console.warn(`Chatbot ${type} send exception`, { endpoint, error: String(err) });
       continue;
     }
   }
