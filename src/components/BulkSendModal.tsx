@@ -224,7 +224,7 @@ export default function BulkSendModal({ open, onClose, contacts, labelName, labe
 
   return (
     <Dialog open={open} onOpenChange={v => !v && handleClose()}>
-      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-lg h-[90vh] max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="text-sm flex items-center gap-2">
             <Send className="h-4 w-4" />
@@ -236,159 +236,162 @@ export default function BulkSendModal({ open, onClose, contacts, labelName, labe
         </DialogHeader>
 
         {status === 'idle' ? (
-          <ScrollArea className="flex-1 max-h-[60vh] pr-2">
-            <div className="space-y-4">
-              {/* Message variations */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs font-medium">Variações de mensagem</Label>
-                  {messages.length < 4 && (
-                    <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={addVariation}>
-                      <Plus className="h-3 w-3" /> Variação
-                    </Button>
-                  )}
-                </div>
-                {messages.map((msg, i) => (
-                  <div key={i} className="flex gap-1.5 items-start">
-                    <Badge variant="outline" className="mt-2 text-[10px] shrink-0 tabular-nums">
-                      {i + 1}
-                    </Badge>
-                    <Textarea
-                      value={msg}
-                      onChange={e => updateMessage(i, e.target.value)}
-                      placeholder={`Mensagem variação ${i + 1}...`}
-                      className="text-xs min-h-[60px] flex-1"
-                    />
-                    {messages.length > 1 && (
-                      <Button size="icon" variant="ghost" className="h-7 w-7 mt-1 shrink-0" onClick={() => removeVariation(i)}>
-                        <X className="h-3 w-3" />
+          <div className="flex-1 min-h-0 flex flex-col">
+            <ScrollArea className="flex-1 min-h-0 pr-2">
+              <div className="space-y-4 pb-4">
+                {/* Message variations */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium">Variações de mensagem</Label>
+                    {messages.length < 4 && (
+                      <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={addVariation}>
+                        <Plus className="h-3 w-3" /> Variação
                       </Button>
                     )}
                   </div>
-                ))}
-                <p className="text-[10px] text-muted-foreground">
-                  {messages.length > 1
-                    ? `${messages.length} variações — uma será escolhida aleatoriamente para cada lead`
-                    : 'Adicione até 4 variações para diminuir risco de banimento'}
-                </p>
-              </div>
-
-              {/* Media */}
-              <div className="space-y-2">
-                <Label className="text-xs font-medium">Mídia (opcional)</Label>
-                {mediaType === 'none' ? (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs gap-1.5"
-                      onClick={() => {
-                        if (fileInputRef.current) {
-                          fileInputRef.current.accept = 'image/*';
-                          fileInputRef.current.click();
-                        }
-                      }}
-                    >
-                      <Image className="h-3.5 w-3.5" /> Imagem
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs gap-1.5"
-                      onClick={() => {
-                        if (fileInputRef.current) {
-                          fileInputRef.current.accept = 'video/*';
-                          fileInputRef.current.click();
-                        }
-                      }}
-                    >
-                      <Video className="h-3.5 w-3.5" /> Vídeo
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-secondary/50 border border-border">
-                    {mediaType === 'image' ? <Image className="h-4 w-4 text-primary" /> : <Video className="h-4 w-4 text-primary" />}
-                    <span className="text-xs flex-1 truncate">{mediaName}</span>
-                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={removeMedia}>
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-                {mediaType !== 'none' && (
-                  <Input
-                    value={caption}
-                    onChange={e => setCaption(e.target.value)}
-                    placeholder="Legenda da mídia (opcional)"
-                    className="h-8 text-xs"
-                  />
-                )}
-                <input ref={fileInputRef} type="file" className="hidden" onChange={handleMediaSelect} />
-              </div>
-
-              {/* Batch config */}
-              <div className="space-y-3 p-3 rounded-lg bg-secondary/30 border border-border">
-                <div className="flex items-center gap-2 text-xs font-medium text-foreground">
-                  <Package className="h-3.5 w-3.5" /> Configuração de envio
+                  {messages.map((msg, i) => (
+                    <div key={i} className="flex gap-1.5 items-start">
+                      <Badge variant="outline" className="mt-2 text-[10px] shrink-0 tabular-nums">
+                        {i + 1}
+                      </Badge>
+                      <Textarea
+                        value={msg}
+                        onChange={e => updateMessage(i, e.target.value)}
+                        placeholder={`Mensagem variação ${i + 1}...`}
+                        className="text-xs min-h-[60px] flex-1"
+                      />
+                      {messages.length > 1 && (
+                        <Button size="icon" variant="ghost" className="h-7 w-7 mt-1 shrink-0" onClick={() => removeVariation(i)}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-muted-foreground">
+                    {messages.length > 1
+                      ? `${messages.length} variações — uma será escolhida aleatoriamente para cada lead`
+                      : 'Adicione até 4 variações para diminuir risco de banimento'}
+                  </p>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground">Lote</Label>
+                {/* Media */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium">Mídia (opcional)</Label>
+                  {mediaType === 'none' ? (
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs gap-1.5"
+                        onClick={() => {
+                          if (fileInputRef.current) {
+                            fileInputRef.current.accept = 'image/*';
+                            fileInputRef.current.click();
+                          }
+                        }}
+                      >
+                        <Image className="h-3.5 w-3.5" /> Imagem
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs gap-1.5"
+                        onClick={() => {
+                          if (fileInputRef.current) {
+                            fileInputRef.current.accept = 'video/*';
+                            fileInputRef.current.click();
+                          }
+                        }}
+                      >
+                        <Video className="h-3.5 w-3.5" /> Vídeo
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-secondary/50 border border-border">
+                      {mediaType === 'image' ? <Image className="h-4 w-4 text-primary" /> : <Video className="h-4 w-4 text-primary" />}
+                      <span className="text-xs flex-1 truncate">{mediaName}</span>
+                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={removeMedia}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                  {mediaType !== 'none' && (
                     <Input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={batchSize}
-                      onChange={e => setBatchSize(Number(e.target.value))}
+                      value={caption}
+                      onChange={e => setCaption(e.target.value)}
+                      placeholder="Legenda da mídia (opcional)"
                       className="h-8 text-xs"
                     />
-                    <p className="text-[9px] text-muted-foreground">msgs/lote</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground">Pausa msg</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={60}
-                      value={delayBetweenMessages}
-                      onChange={e => setDelayBetweenMessages(Number(e.target.value))}
-                      className="h-8 text-xs"
-                    />
-                    <p className="text-[9px] text-muted-foreground">segundos</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground">Pausa lote</Label>
-                    <Input
-                      type="number"
-                      min={10}
-                      max={600}
-                      value={delayBetweenBatches}
-                      onChange={e => setDelayBetweenBatches(Number(e.target.value))}
-                      className="h-8 text-xs"
-                    />
-                    <p className="text-[9px] text-muted-foreground">segundos</p>
-                  </div>
+                  )}
+                  <input ref={fileInputRef} type="file" className="hidden" onChange={handleMediaSelect} />
                 </div>
 
-                <div className="p-2 rounded bg-muted/50 text-[10px] text-muted-foreground space-y-0.5">
-                  <p>📋 <strong>{contacts.length}</strong> leads em <strong>{Math.ceil(contacts.length / batchSize)}</strong> lotes</p>
-                  <p>⏱ Tempo estimado: ~<strong>{Math.ceil(
-                    (contacts.length * delayBetweenMessages) +
-                    (Math.floor(contacts.length / batchSize) * delayBetweenBatches)
-                  )}s</strong> ({Math.ceil(
-                    ((contacts.length * delayBetweenMessages) +
-                    (Math.floor(contacts.length / batchSize) * delayBetweenBatches)) / 60
-                  )} min)</p>
+                {/* Batch config */}
+                <div className="space-y-3 p-3 rounded-lg bg-secondary/30 border border-border">
+                  <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                    <Package className="h-3.5 w-3.5" /> Configuração de envio
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Lote</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={batchSize}
+                        onChange={e => setBatchSize(Number(e.target.value))}
+                        className="h-8 text-xs"
+                      />
+                      <p className="text-[9px] text-muted-foreground">msgs/lote</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Pausa msg</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={delayBetweenMessages}
+                        onChange={e => setDelayBetweenMessages(Number(e.target.value))}
+                        className="h-8 text-xs"
+                      />
+                      <p className="text-[9px] text-muted-foreground">segundos</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Pausa lote</Label>
+                      <Input
+                        type="number"
+                        min={10}
+                        max={600}
+                        value={delayBetweenBatches}
+                        onChange={e => setDelayBetweenBatches(Number(e.target.value))}
+                        className="h-8 text-xs"
+                      />
+                      <p className="text-[9px] text-muted-foreground">segundos</p>
+                    </div>
+                  </div>
+
+                  <div className="p-2 rounded bg-muted/50 text-[10px] text-muted-foreground space-y-0.5">
+                    <p>📋 <strong>{contacts.length}</strong> leads em <strong>{Math.ceil(contacts.length / batchSize)}</strong> lotes</p>
+                    <p>⏱ Tempo estimado: ~<strong>{Math.ceil(
+                      (contacts.length * delayBetweenMessages) +
+                      (Math.floor(contacts.length / batchSize) * delayBetweenBatches)
+                    )}s</strong> ({Math.ceil(
+                      ((contacts.length * delayBetweenMessages) +
+                      (Math.floor(contacts.length / batchSize) * delayBetweenBatches)) / 60
+                    )} min)</p>
+                  </div>
                 </div>
               </div>
+            </ScrollArea>
 
-              {/* Send button */}
+            <div className="pt-3 border-t border-border bg-background/80">
               <Button className="w-full gap-2" onClick={startSending}>
                 <Send className="h-4 w-4" />
                 Iniciar envio para {contacts.length} leads
               </Button>
             </div>
-          </ScrollArea>
+          </div>
         ) : (
           /* Progress / Results view */
           <div className="space-y-4">
