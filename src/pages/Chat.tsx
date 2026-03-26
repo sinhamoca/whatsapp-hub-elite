@@ -546,6 +546,19 @@ export default function Chat() {
                 {/* Context menu for sent messages */}
                 {msg.from_me && contextMenuMsg === msg.id && (
                   <div className="absolute -top-10 right-0 z-50 flex gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
+                    {msg.msg_type === 'text' && msg.message_id && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startEditing(msg);
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -560,9 +573,19 @@ export default function Chat() {
                   </div>
                 )}
 
-                {/* Action button on hover for sent messages */}
+                {/* Action buttons on hover for sent messages */}
                 {msg.from_me && contextMenuMsg !== msg.id && (
                   <div className="absolute -top-8 right-0 hidden group-hover:flex gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
+                    {msg.msg_type === 'text' && msg.message_id && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                        onClick={() => startEditing(msg)}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -570,6 +593,25 @@ export default function Chat() {
                       onClick={() => handleDeleteMessage(msg)}
                     >
                       <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+
+                {/* Inline edit mode */}
+                {editingMsg?.id === msg.id && (
+                  <div className="flex items-center gap-1 mb-1">
+                    <Input
+                      value={editText}
+                      onChange={e => setEditText(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleEditMessage()}
+                      className="h-7 text-xs bg-background/50"
+                      autoFocus
+                    />
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-primary" onClick={handleEditMessage}>
+                      <Check className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={() => { setEditingMsg(null); setEditText(''); }}>
+                      <X className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 )}
