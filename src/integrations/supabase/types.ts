@@ -14,6 +14,246 @@ export type Database = {
   }
   public: {
     Tables: {
+      chatbot_edges: {
+        Row: {
+          created_at: string | null
+          flow_id: string
+          id: string
+          keywords: string[]
+          match_type: string
+          source_node_id: string
+          target_node_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          flow_id: string
+          id?: string
+          keywords?: string[]
+          match_type?: string
+          source_node_id: string
+          target_node_id: string
+        }
+        Update: {
+          created_at?: string | null
+          flow_id?: string
+          id?: string
+          keywords?: string[]
+          match_type?: string
+          source_node_id?: string
+          target_node_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chatbot_edges_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_flows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_edges_source_node_id_fkey"
+            columns: ["source_node_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_edges_target_node_id_fkey"
+            columns: ["target_node_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chatbot_flows: {
+        Row: {
+          created_at: string | null
+          id: string
+          instance_id: string
+          is_active: boolean
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          instance_id: string
+          is_active?: boolean
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          instance_id?: string
+          is_active?: boolean
+          name?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chatbot_flows_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chatbot_node_responses: {
+        Row: {
+          content: string | null
+          created_at: string | null
+          delay_seconds: number
+          id: string
+          media_url: string | null
+          node_id: string
+          response_type: string
+          sort_order: number
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string | null
+          delay_seconds?: number
+          id?: string
+          media_url?: string | null
+          node_id: string
+          response_type?: string
+          sort_order?: number
+        }
+        Update: {
+          content?: string | null
+          created_at?: string | null
+          delay_seconds?: number
+          id?: string
+          media_url?: string | null
+          node_id?: string
+          response_type?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chatbot_node_responses_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chatbot_nodes: {
+        Row: {
+          absence_message: string | null
+          absence_timeout_minutes: number | null
+          created_at: string | null
+          flow_id: string
+          id: string
+          label_id: string | null
+          name: string
+          position_x: number
+          position_y: number
+          type: string
+        }
+        Insert: {
+          absence_message?: string | null
+          absence_timeout_minutes?: number | null
+          created_at?: string | null
+          flow_id: string
+          id?: string
+          label_id?: string | null
+          name?: string
+          position_x?: number
+          position_y?: number
+          type?: string
+        }
+        Update: {
+          absence_message?: string | null
+          absence_timeout_minutes?: number | null
+          created_at?: string | null
+          flow_id?: string
+          id?: string
+          label_id?: string | null
+          name?: string
+          position_x?: number
+          position_y?: number
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chatbot_nodes_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_flows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_nodes_label_id_fkey"
+            columns: ["label_id"]
+            isOneToOne: false
+            referencedRelation: "labels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chatbot_sessions: {
+        Row: {
+          current_node_id: string | null
+          flow_id: string
+          id: string
+          instance_id: string
+          is_active: boolean
+          jid: string
+          last_interaction_at: string | null
+          started_at: string | null
+          user_id: string
+        }
+        Insert: {
+          current_node_id?: string | null
+          flow_id: string
+          id?: string
+          instance_id: string
+          is_active?: boolean
+          jid: string
+          last_interaction_at?: string | null
+          started_at?: string | null
+          user_id: string
+        }
+        Update: {
+          current_node_id?: string | null
+          flow_id?: string
+          id?: string
+          instance_id?: string
+          is_active?: boolean
+          jid?: string
+          last_interaction_at?: string | null
+          started_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chatbot_sessions_current_node_id_fkey"
+            columns: ["current_node_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_sessions_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_flows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_sessions_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contact_labels: {
         Row: {
           contact_id: string
