@@ -242,6 +242,94 @@ Deno.serve(async (req) => {
 
     console.log(`Synced ${synced} contact names`);
 
+    // === Second pass: fix conversations still showing JID-like names ===
+    const { data: unresolvedConvs } = await supabase
+      .from("conversations")
+      .select("jid, contact_name")
+      .eq("instance_id", instanceId)
+      .eq("user_id", user.id)
+      .order("last_message_at", { ascending: false })
+      .limit(200);
+
+    let fixedCount = 0;
+    for (const conv of unresolvedConvs || []) {
+      const name = conv.contact_name || "";
+      // Check if the contact_name looks like a JID or raw number (not a real name)
+      const looksLikeJid = /^[\d]+$/.test(name) || name.includes("@") || !name;
+      if (!looksLikeJid) continue;
+
+      const convJid = conv.jid;
+      const isLidJid = convJid.endsWith("@lid");
+
+      // For @s.whatsapp.net: format number nicely and look up in contacts
+      if (convJid.endsWith("@s.whatsapp.net")) {
+        const phone = convJid.split("@")[0] || "";
+        const contactInfo = allContacts[convJid] || localPartLookup[phone]?.info;
+        const displayName = contactInfo ? pickFirstString(
+          contactInfo?.FullName, contactInfo?.fullName,
+          contactInfo?.Name, contactInfo?.name,
+          contactInfo?.BusinessName, contactInfo?.businessName,
+          contactInfo?.PushName, contactInfo?.pushName,
+        ) : "";
+
+        if (displayName) {
+          await supabase.from("conversations")
+            .update({ contact_name: displayName })
+            .eq("instance_id", instanceId).eq("jid", convJid);
+          await supabase.from("contacts")
+            .upsert({ user_id: user.id, instance_id: instanceId, jid: convJid, name: displayName, phone }, { onConflict: "instance_id,jid" });
+          fixedCount++;
+        }
+        continue;
+      }
+
+      // For @lid: try matching by PushName stored in contacts table
+      if (isLidJid) {
+        const { data: existingContact } = await supabase
+          .from("contacts")
+          .select("push_name, name, phone")
+          .eq("instance_id", instanceId)
+          .eq("jid", convJid)
+          .maybeSingle();
+
+        // If contact has a push_name but conversation has JID-like name, use push_name
+        const betterName = pickFirstString(existingContact?.name, existingContact?.push_name);
+        if (betterName && betterName !== name && !/^[\d]+$/.test(betterName) && !betterName.includes("@")) {
+          await supabase.from("conversations")
+            .update({ contact_name: betterName })
+            .eq("instance_id", instanceId).eq("jid", convJid);
+          fixedCount++;
+          continue;
+        }
+
+        // Try broader name matching: check if any WuzAPI contact has a PushName
+        // that was used as the conversation's push_name
+        if (existingContact?.push_name) {
+          const pushLower = existingContact.push_name.trim().toLowerCase();
+          for (const [cJid, cInfo] of Object.entries(allContacts)) {
+            if (!cJid.endsWith("@s.whatsapp.net")) continue;
+            const cPush = String((cInfo as any)?.PushName || "").trim().toLowerCase();
+            const cFull = String((cInfo as any)?.FullName || "").trim().toLowerCase();
+            if (cPush && cPush === pushLower) {
+              const resolvedName = pickFirstString((cInfo as any)?.FullName, (cInfo as any)?.PushName);
+              const resolvedPhone = cJid.split("@")[0] || "";
+              if (resolvedName) {
+                await supabase.from("conversations")
+                  .update({ contact_name: resolvedName })
+                  .eq("instance_id", instanceId).eq("jid", convJid);
+                await supabase.from("contacts")
+                  .upsert({ user_id: user.id, instance_id: instanceId, jid: convJid, name: resolvedName, phone: resolvedPhone }, { onConflict: "instance_id,jid" });
+                fixedCount++;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    console.log(`Second pass fixed ${fixedCount} unresolved names`);
+
     let avatarsSynced = 0;
     const topConversations = conversations.slice(0, 20);
 
