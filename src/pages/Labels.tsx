@@ -280,6 +280,16 @@ export default function Labels() {
           )}
         </AnimatePresence>
       </ScrollArea>
+
+      {selectedLabel && (
+        <BulkSendModal
+          open={bulkSendOpen}
+          onClose={() => setBulkSendOpen(false)}
+          contacts={contacts}
+          labelName={selectedLabel.name}
+          labelColor={selectedLabel.color}
+        />
+      )}
     </div>
   );
 }
