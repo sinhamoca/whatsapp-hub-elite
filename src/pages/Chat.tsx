@@ -253,17 +253,67 @@ export default function Chat() {
     if (!conversation) return;
 
     try {
+      // Try to delete on WhatsApp if we have a message_id
+      if (msg.message_id) {
+        const recipient = buildRecipient(conversation.jid);
+        await supabase.functions.invoke('wuzapi-proxy', {
+          body: {
+            instanceId: selectedInstanceId,
+            endpoint: '/chat/delete',
+            method: 'POST',
+            payload: { ...recipient, Id: msg.message_id, FromMe: true },
+          },
+        });
+      }
+
       // Remove locally
       setMessages(prev => prev.filter(m => m.id !== msg.id));
-
-      // Remove from DB
       await supabase.from('messages').delete().eq('id', msg.id);
 
-      toast({ title: 'Mensagem removida do histórico' });
+      toast({ title: 'Mensagem apagada' });
     } catch (err: any) {
-      toast({ title: 'Erro ao remover', description: err.message, variant: 'destructive' });
+      toast({ title: 'Erro ao apagar', description: err.message, variant: 'destructive' });
     }
 
+    setContextMenuMsg(null);
+  };
+
+  const handleEditMessage = async () => {
+    if (!editingMsg || !editText.trim() || !conversation) return;
+
+    if (!editingMsg.message_id) {
+      toast({ title: 'Não é possível editar', description: 'Mensagem sem ID do WhatsApp', variant: 'destructive' });
+      setEditingMsg(null);
+      return;
+    }
+
+    try {
+      const recipient = buildRecipient(conversation.jid);
+      await supabase.functions.invoke('wuzapi-proxy', {
+        body: {
+          instanceId: selectedInstanceId,
+          endpoint: '/chat/send/edit',
+          method: 'POST',
+          payload: { ...recipient, Id: editingMsg.message_id, Body: editText.trim() },
+        },
+      });
+
+      // Update locally
+      setMessages(prev => prev.map(m => m.id === editingMsg.id ? { ...m, body: editText.trim() } : m));
+      await supabase.from('messages').update({ body: editText.trim() }).eq('id', editingMsg.id);
+
+      toast({ title: 'Mensagem editada' });
+    } catch (err: any) {
+      toast({ title: 'Erro ao editar', description: err.message, variant: 'destructive' });
+    }
+
+    setEditingMsg(null);
+    setEditText('');
+  };
+
+  const startEditing = (msg: Message) => {
+    setEditingMsg(msg);
+    setEditText(msg.body || '');
     setContextMenuMsg(null);
   };
 
