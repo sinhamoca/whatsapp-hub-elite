@@ -485,28 +485,15 @@ export default function Chat() {
                     : 'bg-chat-incoming rounded-bl-md'
                 )}
                 onContextMenu={(e) => {
-                  if (msg.from_me && msg.message_id) {
+                  if (msg.from_me) {
                     e.preventDefault();
                     setContextMenuMsg(msg.id);
                   }
                 }}
               >
                 {/* Context menu for sent messages */}
-                {msg.from_me && msg.message_id && contextMenuMsg === msg.id && (
+                {msg.from_me && contextMenuMsg === msg.id && (
                   <div className="absolute -top-10 right-0 z-50 flex gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingMsg(msg);
-                        setEditText(msg.body);
-                        setContextMenuMsg(null);
-                      }}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -521,20 +508,9 @@ export default function Chat() {
                   </div>
                 )}
 
-                {/* Action buttons on hover for sent messages */}
-                {msg.from_me && msg.message_id && !editingMsg && contextMenuMsg !== msg.id && (
+                {/* Action button on hover for sent messages */}
+                {msg.from_me && contextMenuMsg !== msg.id && (
                   <div className="absolute -top-8 right-0 hidden group-hover:flex gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => {
-                        setEditingMsg(msg);
-                        setEditText(msg.body);
-                      }}
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -546,58 +522,26 @@ export default function Chat() {
                   </div>
                 )}
 
-                {/* Editing mode */}
-                {editingMsg?.id === msg.id ? (
-                  <div className="flex flex-col gap-2">
-                    <Input
-                      value={editText}
-                      onChange={e => setEditText(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') handleEditMessage(msg);
-                        if (e.key === 'Escape') { setEditingMsg(null); setEditText(''); }
-                      }}
-                      className="text-sm bg-background/50"
-                      autoFocus
-                    />
-                    <div className="flex gap-1 justify-end">
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingMsg(null); setEditText(''); }}>
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-primary" onClick={() => handleEditMessage(msg)}>
-                        <Check className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {msg.media_url && msg.msg_type === 'image' && (
-                      <img src={msg.media_url} alt="Imagem" className="rounded-lg mb-1 max-w-full max-h-64 object-contain cursor-pointer" onClick={() => window.open(msg.media_url, '_blank')} />
-                    )}
-                    {msg.media_url && msg.msg_type === 'video' && (
-                      <video src={msg.media_url} controls className="rounded-lg mb-1 max-w-full max-h-64" />
-                    )}
-                    {msg.media_url && msg.msg_type === 'audio' && (
-                      <audio src={msg.media_url} controls className="mb-1 max-w-full" />
-                    )}
-                    {msg.media_url && msg.msg_type === 'document' && (
-                      <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-secondary/50 rounded-lg p-2 mb-1 hover:bg-secondary transition-colors">
-                        <FileText className="h-5 w-5 text-primary shrink-0" />
-                        <span className="text-xs text-primary underline truncate">{msg.body || 'Documento'}</span>
-                      </a>
-                    )}
-                    {msg.media_url && msg.msg_type === 'sticker' && (
-                      <img src={msg.media_url} alt="Sticker" className="max-w-[150px] mb-1" />
-                    )}
-                    <p className="text-sm text-foreground">{msg.body}</p>
-                    <p className="text-[10px] text-muted-foreground text-right mt-1">{formatTime(msg.timestamp)}</p>
-                  </>
+                {msg.media_url && msg.msg_type === 'image' && (
+                  <img src={msg.media_url} alt="Imagem" className="rounded-lg mb-1 max-w-full max-h-64 object-contain cursor-pointer" onClick={() => window.open(msg.media_url, '_blank')} />
                 )}
-              </div>
-            </motion.div>
-          ))
-        )}
-        <div ref={bottomRef} />
-      </div>
+                {msg.media_url && msg.msg_type === 'video' && (
+                  <video src={msg.media_url} controls className="rounded-lg mb-1 max-w-full max-h-64" />
+                )}
+                {msg.media_url && msg.msg_type === 'audio' && (
+                  <audio src={msg.media_url} controls className="mb-1 max-w-full" />
+                )}
+                {msg.media_url && msg.msg_type === 'document' && (
+                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-secondary/50 rounded-lg p-2 mb-1 hover:bg-secondary transition-colors">
+                    <FileText className="h-5 w-5 text-primary shrink-0" />
+                    <span className="text-xs text-primary underline truncate">{msg.body || 'Documento'}</span>
+                  </a>
+                )}
+                {msg.media_url && msg.msg_type === 'sticker' && (
+                  <img src={msg.media_url} alt="Sticker" className="max-w-[150px] mb-1" />
+                )}
+                <p className="text-sm text-foreground">{msg.body}</p>
+                <p className="text-[10px] text-muted-foreground text-right mt-1">{formatTime(msg.timestamp)}</p>
 
       {/* Input */}
       <div className="p-3 border-t border-border bg-card/50 backdrop-blur-sm">
