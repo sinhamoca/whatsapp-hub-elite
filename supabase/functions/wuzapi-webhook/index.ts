@@ -1109,8 +1109,16 @@ async function executeNode(
   }
 }
 
+function buildRecipient(jid: string) {
+  if (jid.endsWith("@lid")) {
+    return { Phone: jid };
+  }
+  return { Phone: jid.split("@")[0] };
+}
+
 async function sendTextMessage(apiUrl: string, token: string, jid: string, text: string) {
   const endpoints = ["/chat/send/text", "/send/text", "/chat/sendmessage"];
+  const recipient = buildRecipient(jid);
 
   for (const endpoint of endpoints) {
     try {
@@ -1121,7 +1129,7 @@ async function sendTextMessage(apiUrl: string, token: string, jid: string, text:
           Token: token,
           Authorization: token,
         },
-        body: JSON.stringify({ Phone: jid.split("@")[0], Body: text }),
+        body: JSON.stringify({ ...recipient, Body: text }),
       });
 
       if (resp.ok) {
@@ -1149,7 +1157,7 @@ async function sendMediaMessage(
   };
 
   const endpoints = endpointMap[type] || endpointMap.image;
-  const phone = jid.split("@")[0];
+  const recipient = buildRecipient(jid);
 
   for (const endpoint of endpoints) {
     try {
@@ -1160,7 +1168,7 @@ async function sendMediaMessage(
           Token: token,
           Authorization: token,
         },
-        body: JSON.stringify({ Phone: phone, Url: mediaUrl, Caption: caption }),
+        body: JSON.stringify({ ...recipient, Url: mediaUrl, Caption: caption }),
       });
 
       if (resp.ok) {
