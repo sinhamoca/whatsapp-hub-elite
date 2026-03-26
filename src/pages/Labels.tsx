@@ -37,6 +37,7 @@ export default function Labels() {
   const [selectedLabel, setSelectedLabel] = useState<Label | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
+  const [bulkSendOpen, setBulkSendOpen] = useState(false);
 
   useEffect(() => {
     if (user) loadLabels();
