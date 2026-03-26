@@ -151,6 +151,11 @@ export default function Labels() {
               : `${labels.length} etiqueta${labels.length !== 1 ? 's' : ''} · ${totalLeads} lead${totalLeads !== 1 ? 's' : ''}`}
           </p>
         </div>
+        {selectedLabel && contacts.length > 0 && !loadingContacts && (
+          <Button size="sm" className="gap-1.5 text-xs" onClick={() => setBulkSendOpen(true)}>
+            <Send className="h-3.5 w-3.5" /> Envio em massa
+          </Button>
+        )}
       </div>
 
       {/* Content */}
