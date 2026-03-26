@@ -766,7 +766,7 @@ async function processChatbot(
   // 1. Get all active flows for this instance
   const { data: flows } = await supabase
     .from("chatbot_flows")
-    .select("id")
+    .select("id, trigger_type, trigger_keywords, trigger_match_type")
     .eq("instance_id", instanceId)
     .eq("is_active", true);
 
@@ -789,8 +789,8 @@ async function processChatbot(
     // Continue existing session — match edges from current node
     await handleSessionStep(supabase, instance, userId, instanceId, jid, messageBody, activeSession);
   } else {
-    // No active session — check if message matches any start node's outgoing edges
-    await handleNewSession(supabase, instance, userId, instanceId, jid, messageBody, flowIds);
+    // No active session — check flow-level triggers first
+    await handleNewSession(supabase, instance, userId, instanceId, jid, messageBody, flows);
   }
 }
 
