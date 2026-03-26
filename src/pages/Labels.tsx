@@ -29,6 +29,7 @@ interface Contact {
 }
 
 export default function Labels() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [labels, setLabels] = useState<Label[]>([]);
   const [loading, setLoading] = useState(true);
