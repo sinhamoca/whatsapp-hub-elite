@@ -27,7 +27,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   if (!user) return <Navigate to="/auth" replace />;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col md:flex-row">
+    <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 border-r border-border bg-card/50 p-4 gap-2">
         <div className="flex items-center gap-2 px-3 py-4 mb-4">
