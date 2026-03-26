@@ -182,13 +182,28 @@ export default function NodeConfigPanel({ nodeId, nodeName, nodeType, absenceMes
                     className="text-xs min-h-[60px]"
                   />
                 ) : (
-                  <div className="space-y-1">
-                    <Input
-                      placeholder="URL da mídia"
-                      value={res.media_url}
-                      onChange={e => updateResponse(res.id, 'media_url', e.target.value)}
-                      className="h-7 text-xs"
-                    />
+                  <div className="space-y-1.5">
+                    {res.media_url ? (
+                      <div className="flex items-center gap-2 p-1.5 rounded bg-secondary/50 border border-border">
+                        {res.response_type === 'image' ? <Image className="h-3.5 w-3.5 text-primary shrink-0" /> : <Video className="h-3.5 w-3.5 text-primary shrink-0" />}
+                        <span className="text-[10px] flex-1 truncate text-muted-foreground">{res.media_url.split('/').pop()}</span>
+                        <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" onClick={() => updateResponse(res.id, 'media_url', '')}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full text-xs h-7 gap-1.5"
+                        disabled={uploadingId === res.id}
+                        onClick={() => triggerUpload(res.id, res.response_type)}
+                      >
+                        {uploadingId === res.id
+                          ? <><Loader2 className="h-3 w-3 animate-spin" /> Enviando...</>
+                          : <><Upload className="h-3 w-3" /> Selecionar {res.response_type === 'image' ? 'imagem' : 'vídeo'}</>}
+                      </Button>
+                    )}
                     <Input
                       placeholder="Legenda (opcional)"
                       value={res.content}
