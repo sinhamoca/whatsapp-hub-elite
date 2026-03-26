@@ -73,6 +73,9 @@ export type Database = {
           instance_id: string
           is_active: boolean
           name: string
+          trigger_keywords: string[]
+          trigger_match_type: string
+          trigger_type: string
           user_id: string
         }
         Insert: {
@@ -81,6 +84,9 @@ export type Database = {
           instance_id: string
           is_active?: boolean
           name: string
+          trigger_keywords?: string[]
+          trigger_match_type?: string
+          trigger_type?: string
           user_id: string
         }
         Update: {
@@ -89,6 +95,9 @@ export type Database = {
           instance_id?: string
           is_active?: boolean
           name?: string
+          trigger_keywords?: string[]
+          trigger_match_type?: string
+          trigger_type?: string
           user_id?: string
         }
         Relationships: [
