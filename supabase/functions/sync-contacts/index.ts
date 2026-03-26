@@ -137,12 +137,24 @@ Deno.serve(async (req) => {
 
     console.log(`Total contacts from WuzAPI: ${Object.keys(allContacts).length}`);
 
-    // Build lightweight lookup by non-digit-insensitive local part for fallbacks.
+    // Build lookup by local part (for @s.whatsapp.net fallbacks)
     const localPartLookup: Record<string, { jid: string; info: any }> = {};
+    // Build name→phone lookup from @s.whatsapp.net contacts for LID cross-reference
+    const nameToPhoneLookup: Record<string, string[]> = {};
     for (const [jid, info] of Object.entries(allContacts)) {
       const local = jid.split("@")[0] || "";
       if (local) localPartLookup[local] = { jid, info };
+
+      if (jid.endsWith("@s.whatsapp.net") && local) {
+        const fullName = String((info as any)?.FullName || "").trim().toLowerCase();
+        if (fullName) {
+          if (!nameToPhoneLookup[fullName]) nameToPhoneLookup[fullName] = [];
+          nameToPhoneLookup[fullName].push(local);
+        }
+      }
     }
+
+    console.log(`Name-to-phone lookup entries: ${Object.keys(nameToPhoneLookup).length}`);
 
     let synced = 0;
 
