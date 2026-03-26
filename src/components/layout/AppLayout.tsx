@@ -9,6 +9,7 @@ const navItems = [
   { path: '/', label: 'Conversas', icon: MessageSquare },
   { path: '/instances', label: 'Instâncias', icon: Server },
   { path: '/contacts', label: 'Contatos', icon: Users },
+  { path: '/chatbot', label: 'Chatbot', icon: Bot },
   { path: '/settings', label: 'Config', icon: Settings },
 ];
 

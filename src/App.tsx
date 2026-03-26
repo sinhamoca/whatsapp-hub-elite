@@ -31,6 +31,8 @@ const App = () => (
             <Route path="/instances" element={<AppLayout><Instances /></AppLayout>} />
             <Route path="/contacts" element={<AppLayout><Contacts /></AppLayout>} />
             <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
+            <Route path="/chatbot" element={<AppLayout><ChatbotFlows /></AppLayout>} />
+            <Route path="/chatbot/:flowId" element={<AppLayout><ChatbotEditor /></AppLayout>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
