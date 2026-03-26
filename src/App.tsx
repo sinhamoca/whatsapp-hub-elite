@@ -31,6 +31,7 @@ const App = () => (
             <Route path="/chat/:id" element={<AppLayout><Chat /></AppLayout>} />
             <Route path="/instances" element={<AppLayout><Instances /></AppLayout>} />
             <Route path="/contacts" element={<AppLayout><Contacts /></AppLayout>} />
+            <Route path="/labels" element={<AppLayout><Labels /></AppLayout>} />
             <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
             <Route path="/chatbot" element={<AppLayout><ChatbotFlows /></AppLayout>} />
             <Route path="/chatbot/:flowId" element={<AppLayout><ChatbotEditor /></AppLayout>} />
