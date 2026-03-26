@@ -752,3 +752,332 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// ===== CHATBOT ENGINE =====
+
+async function processChatbot(
+  supabase: any,
+  instance: { id: string; api_url: string; token: string },
+  userId: string,
+  instanceId: string,
+  jid: string,
+  messageBody: string,
+) {
+  // 1. Get all active flows for this instance
+  const { data: flows } = await supabase
+    .from("chatbot_flows")
+    .select("id")
+    .eq("instance_id", instanceId)
+    .eq("is_active", true);
+
+  if (!flows || flows.length === 0) return;
+
+  const flowIds = flows.map((f: any) => f.id);
+
+  // 2. Check for existing active session for this JID in any of these flows
+  const { data: sessions } = await supabase
+    .from("chatbot_sessions")
+    .select("*")
+    .eq("instance_id", instanceId)
+    .eq("jid", jid)
+    .eq("is_active", true)
+    .in("flow_id", flowIds);
+
+  const activeSession = sessions?.[0] || null;
+
+  if (activeSession) {
+    // Continue existing session — match edges from current node
+    await handleSessionStep(supabase, instance, userId, instanceId, jid, messageBody, activeSession);
+  } else {
+    // No active session — check if message matches any start node's outgoing edges
+    await handleNewSession(supabase, instance, userId, instanceId, jid, messageBody, flowIds);
+  }
+}
+
+async function handleNewSession(
+  supabase: any,
+  instance: { id: string; api_url: string; token: string },
+  userId: string,
+  instanceId: string,
+  jid: string,
+  messageBody: string,
+  flowIds: string[],
+) {
+  // Find start nodes in active flows
+  const { data: startNodes } = await supabase
+    .from("chatbot_nodes")
+    .select("id, flow_id")
+    .in("flow_id", flowIds)
+    .eq("type", "start");
+
+  if (!startNodes || startNodes.length === 0) return;
+
+  // Get all edges from start nodes
+  const startNodeIds = startNodes.map((n: any) => n.id);
+  const { data: edges } = await supabase
+    .from("chatbot_edges")
+    .select("*")
+    .in("source_node_id", startNodeIds);
+
+  if (!edges || edges.length === 0) return;
+
+  // Find matching edge
+  const matchedEdge = findMatchingEdge(edges, messageBody);
+  if (!matchedEdge) return;
+
+  const startNode = startNodes.find((n: any) => n.id === matchedEdge.source_node_id);
+  if (!startNode) return;
+
+  // Create session
+  const { data: session } = await supabase
+    .from("chatbot_sessions")
+    .insert({
+      user_id: userId,
+      instance_id: instanceId,
+      flow_id: startNode.flow_id,
+      jid,
+      current_node_id: matchedEdge.target_node_id,
+      last_interaction_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (!session) return;
+
+  // Execute the target node
+  await executeNode(supabase, instance, userId, instanceId, jid, matchedEdge.target_node_id);
+}
+
+async function handleSessionStep(
+  supabase: any,
+  instance: { id: string; api_url: string; token: string },
+  userId: string,
+  instanceId: string,
+  jid: string,
+  messageBody: string,
+  session: any,
+) {
+  if (!session.current_node_id) {
+    // Session has no current node — deactivate
+    await supabase.from("chatbot_sessions").update({ is_active: false }).eq("id", session.id);
+    return;
+  }
+
+  // Get edges from current node
+  const { data: edges } = await supabase
+    .from("chatbot_edges")
+    .select("*")
+    .eq("source_node_id", session.current_node_id);
+
+  if (!edges || edges.length === 0) {
+    // No outgoing edges — end of flow
+    await supabase.from("chatbot_sessions").update({ is_active: false }).eq("id", session.id);
+    return;
+  }
+
+  const matchedEdge = findMatchingEdge(edges, messageBody);
+  if (!matchedEdge) {
+    // No match — update last interaction time but stay on same node
+    await supabase.from("chatbot_sessions")
+      .update({ last_interaction_at: new Date().toISOString() })
+      .eq("id", session.id);
+    return;
+  }
+
+  // Move to next node
+  await supabase.from("chatbot_sessions")
+    .update({
+      current_node_id: matchedEdge.target_node_id,
+      last_interaction_at: new Date().toISOString(),
+    })
+    .eq("id", session.id);
+
+  // Execute the target node
+  await executeNode(supabase, instance, userId, instanceId, jid, matchedEdge.target_node_id);
+}
+
+function findMatchingEdge(edges: any[], messageBody: string): any | null {
+  const msgLower = messageBody.toLowerCase().trim();
+
+  for (const edge of edges) {
+    const keywords: string[] = edge.keywords || [];
+    if (keywords.length === 0) {
+      // Edge with no keywords = catch-all / default path
+      continue;
+    }
+
+    const matchType = edge.match_type || "contains";
+
+    for (const keyword of keywords) {
+      const kwLower = keyword.toLowerCase().trim();
+      if (!kwLower) continue;
+
+      if (matchType === "exact") {
+        if (msgLower === kwLower) return edge;
+      } else {
+        // contains
+        if (msgLower.includes(kwLower)) return edge;
+      }
+    }
+  }
+
+  // If no keyword match, check for catch-all edges (no keywords)
+  for (const edge of edges) {
+    const keywords: string[] = edge.keywords || [];
+    if (keywords.length === 0) return edge;
+  }
+
+  return null;
+}
+
+async function executeNode(
+  supabase: any,
+  instance: { id: string; api_url: string; token: string },
+  userId: string,
+  instanceId: string,
+  jid: string,
+  nodeId: string,
+) {
+  // Get node details
+  const { data: node } = await supabase
+    .from("chatbot_nodes")
+    .select("*")
+    .eq("id", nodeId)
+    .single();
+
+  if (!node) return;
+
+  // Apply label if configured
+  if (node.label_id) {
+    // Find contact
+    const { data: contact } = await supabase
+      .from("contacts")
+      .select("id")
+      .eq("instance_id", instanceId)
+      .eq("jid", jid)
+      .maybeSingle();
+
+    if (contact) {
+      // Upsert label (avoid duplicates)
+      await supabase
+        .from("contact_labels")
+        .upsert(
+          { contact_id: contact.id, label_id: node.label_id },
+          { onConflict: "contact_id,label_id" }
+        );
+    }
+  }
+
+  // Get responses ordered by sort_order
+  const { data: responses } = await supabase
+    .from("chatbot_node_responses")
+    .select("*")
+    .eq("node_id", nodeId)
+    .order("sort_order");
+
+  if (!responses || responses.length === 0) return;
+
+  // Send responses sequentially with delays
+  const apiUrl = instance.api_url.replace(/\/+$/, "");
+
+  for (const resp of responses) {
+    // Wait for delay
+    if (resp.delay_seconds > 0) {
+      await new Promise(resolve => setTimeout(resolve, resp.delay_seconds * 1000));
+    }
+
+    try {
+      if (resp.response_type === "text" && resp.content) {
+        await sendTextMessage(apiUrl, instance.token, jid, resp.content);
+      } else if (resp.response_type === "image" && resp.media_url) {
+        await sendMediaMessage(apiUrl, instance.token, jid, resp.media_url, resp.content || "", "image");
+      } else if (resp.response_type === "video" && resp.media_url) {
+        await sendMediaMessage(apiUrl, instance.token, jid, resp.media_url, resp.content || "", "video");
+      }
+    } catch (sendErr) {
+      console.error("Chatbot send error:", sendErr);
+    }
+  }
+
+  // Check if node has outgoing edges — if not, deactivate session
+  const { data: outEdges } = await supabase
+    .from("chatbot_edges")
+    .select("id")
+    .eq("source_node_id", nodeId)
+    .limit(1);
+
+  if (!outEdges || outEdges.length === 0) {
+    // End of flow — deactivate session
+    await supabase
+      .from("chatbot_sessions")
+      .update({ is_active: false })
+      .eq("instance_id", instanceId)
+      .eq("jid", jid)
+      .eq("is_active", true);
+  }
+}
+
+async function sendTextMessage(apiUrl: string, token: string, jid: string, text: string) {
+  const endpoints = ["/chat/send/text", "/send/text", "/chat/sendmessage"];
+
+  for (const endpoint of endpoints) {
+    try {
+      const resp = await fetch(`${apiUrl}${endpoint}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Token: token,
+          Authorization: token,
+        },
+        body: JSON.stringify({ Phone: jid.split("@")[0], Body: text }),
+      });
+
+      if (resp.ok) {
+        console.log("Chatbot text sent via", endpoint);
+        return;
+      }
+    } catch {
+      continue;
+    }
+  }
+  console.error("Failed to send chatbot text message");
+}
+
+async function sendMediaMessage(
+  apiUrl: string,
+  token: string,
+  jid: string,
+  mediaUrl: string,
+  caption: string,
+  type: "image" | "video",
+) {
+  const endpointMap = {
+    image: ["/chat/send/image", "/send/image"],
+    video: ["/chat/send/video", "/send/video"],
+  };
+
+  const endpoints = endpointMap[type] || endpointMap.image;
+  const phone = jid.split("@")[0];
+
+  for (const endpoint of endpoints) {
+    try {
+      const resp = await fetch(`${apiUrl}${endpoint}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Token: token,
+          Authorization: token,
+        },
+        body: JSON.stringify({ Phone: phone, Url: mediaUrl, Caption: caption }),
+      });
+
+      if (resp.ok) {
+        console.log(`Chatbot ${type} sent via`, endpoint);
+        return;
+      }
+    } catch {
+      continue;
+    }
+  }
+  console.error(`Failed to send chatbot ${type} message`);
+}
