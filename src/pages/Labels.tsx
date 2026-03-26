@@ -82,12 +82,38 @@ export default function Labels() {
     const contactIds = clData.map(cl => cl.contact_id);
     const { data: contactsData } = await supabase
       .from('contacts')
-      .select('id, name, push_name, phone, avatar_url, jid')
+      .select('id, name, push_name, phone, avatar_url, jid, instance_id')
       .in('id', contactIds)
       .order('name');
 
     setContacts(contactsData || []);
     setLoadingContacts(false);
+  };
+
+  const openChat = async (contact: Contact) => {
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('jid', contact.jid)
+      .eq('instance_id', contact.instance_id)
+      .maybeSingle();
+
+    if (conv) {
+      navigate(`/chat/${conv.id}`);
+    } else {
+      const { data: newConv } = await supabase
+        .from('conversations')
+        .insert({
+          user_id: user!.id,
+          instance_id: contact.instance_id,
+          jid: contact.jid,
+          contact_name: contact.name || contact.push_name || contact.phone || '',
+          avatar_url: contact.avatar_url || '',
+        })
+        .select('id')
+        .single();
+      if (newConv) navigate(`/chat/${newConv.id}`);
+    }
   };
 
   const totalLeads = labels.reduce((sum, l) => sum + l.count, 0);
