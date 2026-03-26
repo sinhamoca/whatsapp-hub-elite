@@ -479,19 +479,21 @@ export default function Chat() {
         <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        {conversation?.avatar_url ? (
-          <img src={conversation.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover" />
-        ) : (
-          <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold text-foreground">
-            {conversation?.contact_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '??'}
+        <button className="flex items-center gap-3 flex-1 min-w-0 text-left" onClick={() => setShowProfile(true)}>
+          {conversation?.avatar_url ? (
+            <img src={conversation.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover" />
+          ) : (
+            <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold text-foreground">
+              {conversation?.contact_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '??'}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-sm text-foreground">{conversation?.contact_name || 'Chat'}</p>
+            <p className="text-xs text-muted-foreground">
+              {contactPhone || (conversation?.jid?.endsWith('@lid') ? '' : conversation?.jid?.split('@')[0])}
+            </p>
           </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm text-foreground">{conversation?.contact_name || 'Chat'}</p>
-          <p className="text-xs text-muted-foreground">
-            {contactPhone || (conversation?.jid?.endsWith('@lid') ? '' : conversation?.jid?.split('@')[0])}
-          </p>
-        </div>
+        </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="text-xs gap-1">
