@@ -331,7 +331,7 @@ export default function Chat() {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-screen md:h-auto">
+    <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
       <div className="flex items-center gap-3 p-3 border-b border-border bg-card/50 backdrop-blur-sm">
         <Button variant="ghost" size="icon" onClick={() => navigate('/')}>

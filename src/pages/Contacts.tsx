@@ -89,7 +89,7 @@ export default function Contacts() {
   }
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col min-h-0">
       <div className="p-4 space-y-3 border-b border-border">
         <h1 className="text-xl font-semibold text-foreground">Contatos</h1>
         <div className="relative">
