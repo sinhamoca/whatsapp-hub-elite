@@ -25,6 +25,7 @@ interface Contact {
   phone: string | null;
   avatar_url: string | null;
   jid: string;
+  instance_id: string;
 }
 
 export default function Labels() {
