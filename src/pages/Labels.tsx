@@ -7,9 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Tag, ArrowLeft, Users, Hash } from 'lucide-react';
+import { Loader2, Tag, ArrowLeft, Users, Hash, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import BulkSendModal from '@/components/BulkSendModal';
 
 interface Label {
   id: string;
@@ -36,6 +37,7 @@ export default function Labels() {
   const [selectedLabel, setSelectedLabel] = useState<Label | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
+  const [bulkSendOpen, setBulkSendOpen] = useState(false);
 
   useEffect(() => {
     if (user) loadLabels();
@@ -149,6 +151,11 @@ export default function Labels() {
               : `${labels.length} etiqueta${labels.length !== 1 ? 's' : ''} · ${totalLeads} lead${totalLeads !== 1 ? 's' : ''}`}
           </p>
         </div>
+        {selectedLabel && contacts.length > 0 && !loadingContacts && (
+          <Button size="sm" className="gap-1.5 text-xs" onClick={() => setBulkSendOpen(true)}>
+            <Send className="h-3.5 w-3.5" /> Envio em massa
+          </Button>
+        )}
       </div>
 
       {/* Content */}
@@ -273,6 +280,16 @@ export default function Labels() {
           )}
         </AnimatePresence>
       </ScrollArea>
+
+      {selectedLabel && (
+        <BulkSendModal
+          open={bulkSendOpen}
+          onClose={() => setBulkSendOpen(false)}
+          contacts={contacts}
+          labelName={selectedLabel.name}
+          labelColor={selectedLabel.color}
+        />
+      )}
     </div>
   );
 }
