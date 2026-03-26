@@ -143,12 +143,12 @@ export default function Chat() {
 
     const { data: contactData } = await supabase
       .from('contacts')
-      .select('phone')
+      .select('id, phone')
       .eq('jid', convData.jid)
       .eq('instance_id', convData.instance_id)
       .maybeSingle();
 
-    const phone = (contactData?.phone || '').replace(/\D/g, '');
+    const phone = ((contactData as any)?.phone || '').replace(/\D/g, '');
     const jidLocalPart = convData.jid.split('@')[0] || '';
     const isLidJid = convData.jid.endsWith('@lid');
 
@@ -156,6 +156,26 @@ export default function Chat() {
       setContactPhone(phone);
     } else {
       setContactPhone('');
+    }
+
+    // Fetch labels for this contact
+    if ((contactData as any)?.id) {
+      const { data: clData } = await supabase
+        .from('contact_labels')
+        .select('label_id')
+        .eq('contact_id', (contactData as any).id);
+      if (clData && clData.length > 0) {
+        const labelIds = (clData as any[]).map((cl: any) => cl.label_id);
+        const { data: labelsData } = await supabase
+          .from('labels')
+          .select('id, name, color')
+          .in('id', labelIds);
+        setContactLabels((labelsData || []) as any);
+      } else {
+        setContactLabels([]);
+      }
+    } else {
+      setContactLabels([]);
     }
 
     const msgRes = await supabase
