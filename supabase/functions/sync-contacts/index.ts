@@ -6,6 +6,16 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const pickFirstString = (...values: unknown[]) => {
+  for (const value of values) {
+    const text = String(value || "").trim();
+    if (text) return text;
+  }
+  return "";
+};
+
+const extractPhone = (value: unknown) => String(value || "").replace(/\D/g, "").trim();
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -26,7 +36,11 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const { data: { user }, error: userError } = await supabaseAuth.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseAuth.auth.getUser();
+
     if (userError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
@@ -51,7 +65,7 @@ Deno.serve(async (req) => {
 
     const { data: instance } = await supabaseAuth
       .from("instances")
-      .select("id, api_url, token, user_id")
+      .select("id, api_url, token")
       .eq("id", instanceId)
       .single();
 
@@ -69,10 +83,10 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     };
 
-    // 1. Get existing conversations to know which contacts we care about
+    // Limit to active conversations so we don't timeout on huge contact lists.
     const { data: conversations } = await supabase
       .from("conversations")
-      .select("jid, contact_name")
+      .select("jid")
       .eq("instance_id", instanceId)
       .eq("user_id", user.id)
       .order("last_message_at", { ascending: false })
@@ -86,11 +100,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const conversationJids = new Set(conversations.map(c => c.jid));
     console.log(`Found ${conversations.length} conversations to sync`);
 
-    // 2. Fetch contacts from WuzAPI
-    console.log("Fetching contacts from WuzAPI...");
     const contactsRes = await fetch(`${apiUrl}/user/contacts`, {
       method: "GET",
       headers,
@@ -107,135 +118,175 @@ Deno.serve(async (req) => {
 
     const contactsData = await contactsRes.json();
 
-    // Parse contacts map from various WuzAPI response formats
     let allContacts: Record<string, any> = {};
     if (contactsData?.data && typeof contactsData.data === "object" && !Array.isArray(contactsData.data)) {
       allContacts = contactsData.data;
+    } else if (contactsData?.Data && typeof contactsData.Data === "object" && !Array.isArray(contactsData.Data)) {
+      allContacts = contactsData.Data;
     } else if (Array.isArray(contactsData?.data)) {
       for (const c of contactsData.data) {
-        const jid = c.Jid || c.jid || c.Id || c.id;
+        const jid = pickFirstString(c?.Jid, c?.jid, c?.Id, c?.id);
         if (jid) allContacts[jid] = c;
       }
-    } else if (contactsData?.Data && typeof contactsData.Data === "object") {
-      allContacts = contactsData.Data;
+    } else if (Array.isArray(contactsData)) {
+      for (const c of contactsData) {
+        const jid = pickFirstString(c?.Jid, c?.jid, c?.Id, c?.id);
+        if (jid) allContacts[jid] = c;
+      }
     }
 
     console.log(`Total contacts from WuzAPI: ${Object.keys(allContacts).length}`);
 
-    // 3. Match contacts to conversations (handle @lid vs @s.whatsapp.net)
-    // Build a phone-to-contact lookup for cross-referencing
-    const phoneToContact: Record<string, { jid: string; info: any }> = {};
+    // Build lightweight lookup by non-digit-insensitive local part for fallbacks.
+    const localPartLookup: Record<string, { jid: string; info: any }> = {};
     for (const [jid, info] of Object.entries(allContacts)) {
-      // Extract phone from any JID format
-      const phone = jid.split("@")[0];
-      phoneToContact[phone] = { jid, info };
+      const local = jid.split("@")[0] || "";
+      if (local) localPartLookup[local] = { jid, info };
     }
 
     let synced = 0;
 
     for (const conv of conversations) {
-      const convPhone = conv.jid.split("@")[0];
-      
-      // Try to find contact by exact JID or by phone number
-      let contactInfo: any = allContacts[conv.jid];
-      if (!contactInfo) {
-        // Try with @s.whatsapp.net suffix
-        contactInfo = allContacts[`${convPhone}@s.whatsapp.net`];
-      }
-      if (!contactInfo) {
-        // Try phone lookup (handles @lid JIDs)
-        const match = phoneToContact[convPhone];
-        if (match) contactInfo = match.info;
-      }
+      const convJid = conv.jid;
+      const jidLocalPart = convJid.split("@")[0] || "";
+      const isLidJid = convJid.endsWith("@lid");
 
-      // Extract display name
-      let displayName = "";
-      if (contactInfo) {
-        displayName =
-          contactInfo.FullName || contactInfo.fullName ||
-          contactInfo.Name || contactInfo.name ||
-          contactInfo.FirstName || contactInfo.firstName ||
-          contactInfo.BusinessName || contactInfo.businessName ||
-          contactInfo.PushName || contactInfo.pushName || "";
-      }
+      const exactMatch = allContacts[convJid];
+      const fallbackByPhone = allContacts[`${jidLocalPart}@s.whatsapp.net`];
+      const fallbackByLocal = localPartLookup[jidLocalPart]?.info;
+      const contactInfo = exactMatch || fallbackByPhone || fallbackByLocal || null;
+
+      if (!contactInfo) continue;
+
+      const displayName = pickFirstString(
+        contactInfo?.FullName,
+        contactInfo?.fullName,
+        contactInfo?.Name,
+        contactInfo?.name,
+        contactInfo?.BusinessName,
+        contactInfo?.businessName,
+        contactInfo?.FirstName,
+        contactInfo?.firstName,
+        contactInfo?.PushName,
+        contactInfo?.pushName,
+      );
 
       if (!displayName) continue;
 
-      // Upsert contact record
-      await supabase.from("contacts").upsert(
-        {
-          user_id: user.id,
-          instance_id: instanceId,
-          jid: conv.jid,
-          name: displayName,
-          push_name: contactInfo?.PushName || contactInfo?.pushName || displayName,
-          phone: convPhone || "",
-        },
-        { onConflict: "instance_id,jid" }
+      const reliablePhone = extractPhone(
+        pickFirstString(
+          contactInfo?.Phone,
+          contactInfo?.phone,
+          contactInfo?.RedactedPhone,
+          contactInfo?.redactedPhone,
+        )
       );
 
-      // Update conversation contact_name
+      const payload: Record<string, any> = {
+        user_id: user.id,
+        instance_id: instanceId,
+        jid: convJid,
+        name: displayName,
+        push_name: pickFirstString(contactInfo?.PushName, contactInfo?.pushName, displayName),
+      };
+
+      if (reliablePhone) {
+        payload.phone = reliablePhone;
+      } else if (isLidJid) {
+        // Avoid storing the @lid internal ID as if it were a real phone number.
+        payload.phone = "";
+      }
+
+      const { error: upsertError } = await supabase
+        .from("contacts")
+        .upsert(payload, { onConflict: "instance_id,jid" });
+
+      if (upsertError) {
+        console.warn("Contact upsert failed for", convJid, upsertError.message);
+        continue;
+      }
+
       await supabase
         .from("conversations")
         .update({ contact_name: displayName })
         .eq("instance_id", instanceId)
-        .eq("jid", conv.jid);
+        .eq("jid", convJid);
 
       synced++;
     }
 
     console.log(`Synced ${synced} contact names`);
 
-    // 4. Fetch avatars for top 10 conversations
     let avatarsSynced = 0;
-    const topConversations = conversations.slice(0, 10);
+    const topConversations = conversations.slice(0, 20);
 
     for (const conv of topConversations) {
       try {
-        const phoneForAvatar = conv.jid.split("@")[0];
+        // WuzAPI expects full @lid JID for LID contacts and plain phone for regular contacts.
+        const avatarTarget = conv.jid.endsWith("@lid")
+          ? conv.jid
+          : (conv.jid.split("@")[0] || "");
+
+        if (!avatarTarget || conv.jid.endsWith("@newsletter")) continue;
 
         const avatarRes = await fetch(`${apiUrl}/user/avatar`, {
           method: "POST",
           headers,
-          body: JSON.stringify({ Phone: phoneForAvatar, Preview: true }),
+          body: JSON.stringify({ Phone: avatarTarget, Preview: true }),
         });
 
         if (!avatarRes.ok) {
-          await avatarRes.text(); // consume body
+          await avatarRes.text();
           continue;
         }
 
         const avatarData = await avatarRes.json();
-        const avatarUrl =
-          avatarData?.data?.URL || avatarData?.data?.Url || avatarData?.data?.url ||
-          avatarData?.URL || avatarData?.Url || avatarData?.url || "";
+        const avatarUrl = pickFirstString(
+          avatarData?.data?.URL,
+          avatarData?.data?.Url,
+          avatarData?.data?.url,
+          avatarData?.URL,
+          avatarData?.Url,
+          avatarData?.url,
+        );
 
         if (!avatarUrl) continue;
 
-        const imgRes = await fetch(avatarUrl);
-        if (!imgRes.ok) {
-          await imgRes.text();
+        const imageRes = await fetch(avatarUrl);
+        if (!imageRes.ok) {
+          await imageRes.text();
           continue;
         }
 
-        const imgBuffer = await imgRes.arrayBuffer();
-        const filePath = `${instanceId}/${phoneForAvatar}.jpg`;
+        const imageBuffer = await imageRes.arrayBuffer();
+        const fileId = conv.jid.replace(/[^a-zA-Z0-9@._-]/g, "_");
+        const filePath = `${instanceId}/${fileId}.jpg`;
 
-        await supabase.storage.from("avatars").upload(filePath, imgBuffer, {
+        await supabase.storage.from("avatars").upload(filePath, imageBuffer, {
           contentType: "image/jpeg",
           upsert: true,
         });
 
-        const { data: pubUrl } = supabase.storage.from("avatars").getPublicUrl(filePath);
-        const storedUrl = pubUrl?.publicUrl || "";
+        const { data: publicUrlData } = supabase.storage.from("avatars").getPublicUrl(filePath);
+        const storedUrl = publicUrlData?.publicUrl || "";
 
-        if (storedUrl) {
-          await supabase.from("contacts").update({ avatar_url: storedUrl }).eq("instance_id", instanceId).eq("jid", conv.jid);
-          await supabase.from("conversations").update({ avatar_url: storedUrl }).eq("instance_id", instanceId).eq("jid", conv.jid);
-          avatarsSynced++;
-        }
-      } catch (err) {
-        console.warn("Avatar error for", conv.jid, err);
+        if (!storedUrl) continue;
+
+        await supabase
+          .from("contacts")
+          .update({ avatar_url: storedUrl })
+          .eq("instance_id", instanceId)
+          .eq("jid", conv.jid);
+
+        await supabase
+          .from("conversations")
+          .update({ avatar_url: storedUrl })
+          .eq("instance_id", instanceId)
+          .eq("jid", conv.jid);
+
+        avatarsSynced++;
+      } catch (error) {
+        console.warn("Avatar sync error for", conv.jid, error);
       }
     }
 
@@ -243,13 +294,19 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({ ok: true, contactsSynced: synced, avatarsSynced }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
     );
-  } catch (err) {
-    console.error("Sync error:", err);
+  } catch (error) {
+    console.error("Sync error:", error);
     return new Response(
-      JSON.stringify({ error: err.message || "Internal error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: error?.message || "Internal error" }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
     );
   }
 });
