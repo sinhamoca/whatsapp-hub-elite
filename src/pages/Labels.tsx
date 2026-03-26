@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
@@ -24,9 +25,11 @@ interface Contact {
   phone: string | null;
   avatar_url: string | null;
   jid: string;
+  instance_id: string;
 }
 
 export default function Labels() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [labels, setLabels] = useState<Label[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,12 +82,38 @@ export default function Labels() {
     const contactIds = clData.map(cl => cl.contact_id);
     const { data: contactsData } = await supabase
       .from('contacts')
-      .select('id, name, push_name, phone, avatar_url, jid')
+      .select('id, name, push_name, phone, avatar_url, jid, instance_id')
       .in('id', contactIds)
       .order('name');
 
     setContacts(contactsData || []);
     setLoadingContacts(false);
+  };
+
+  const openChat = async (contact: Contact) => {
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('jid', contact.jid)
+      .eq('instance_id', contact.instance_id)
+      .maybeSingle();
+
+    if (conv) {
+      navigate(`/chat/${conv.id}`);
+    } else {
+      const { data: newConv } = await supabase
+        .from('conversations')
+        .insert({
+          user_id: user!.id,
+          instance_id: contact.instance_id,
+          jid: contact.jid,
+          contact_name: contact.name || contact.push_name || contact.phone || '',
+          avatar_url: contact.avatar_url || '',
+        })
+        .select('id')
+        .single();
+      if (newConv) navigate(`/chat/${newConv.id}`);
+    }
   };
 
   const totalLeads = labels.reduce((sum, l) => sum + l.count, 0);
@@ -215,7 +244,7 @@ export default function Labels() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.03, duration: 0.2 }}
                     >
-                      <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-secondary/50 transition-colors">
+                      <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer" onClick={() => openChat(contact)}>
                         <Avatar className="h-9 w-9">
                           <AvatarImage src={contact.avatar_url || undefined} />
                           <AvatarFallback
