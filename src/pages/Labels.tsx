@@ -11,6 +11,7 @@ import { Loader2, Tag, ArrowLeft, Users, Hash, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import BulkSendModal from '@/components/BulkSendModal';
+import LabelScheduledMessages from '@/components/LabelScheduledMessages';
 
 interface Label {
   id: string;
