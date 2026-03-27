@@ -290,13 +290,22 @@ export default function Labels() {
       </ScrollArea>
 
       {selectedLabel && (
-        <BulkSendModal
-          open={bulkSendOpen}
-          onClose={() => setBulkSendOpen(false)}
-          contacts={contacts}
-          labelName={selectedLabel.name}
-          labelColor={selectedLabel.color}
-        />
+        <>
+          <BulkSendModal
+            open={bulkSendOpen}
+            onClose={() => setBulkSendOpen(false)}
+            contacts={contacts}
+            labelName={selectedLabel.name}
+            labelColor={selectedLabel.color}
+          />
+          <LabelScheduledMessages
+            open={scheduledOpen}
+            onClose={() => setScheduledOpen(false)}
+            labelId={selectedLabel.id}
+            labelName={selectedLabel.name}
+            labelColor={selectedLabel.color}
+          />
+        </>
       )}
     </div>
   );
