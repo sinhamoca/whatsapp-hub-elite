@@ -423,6 +423,117 @@ export type Database = {
         }
         Relationships: []
       }
+      label_scheduled_messages: {
+        Row: {
+          caption: string | null
+          created_at: string | null
+          delay_minutes: number
+          id: string
+          is_active: boolean
+          label_id: string
+          media_type: string | null
+          media_url: string | null
+          message_1: string
+          message_2: string | null
+          message_3: string | null
+          message_4: string | null
+          user_id: string
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string | null
+          delay_minutes?: number
+          id?: string
+          is_active?: boolean
+          label_id: string
+          media_type?: string | null
+          media_url?: string | null
+          message_1?: string
+          message_2?: string | null
+          message_3?: string | null
+          message_4?: string | null
+          user_id: string
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string | null
+          delay_minutes?: number
+          id?: string
+          is_active?: boolean
+          label_id?: string
+          media_type?: string | null
+          media_url?: string | null
+          message_1?: string
+          message_2?: string | null
+          message_3?: string | null
+          message_4?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "label_scheduled_messages_label_id_fkey"
+            columns: ["label_id"]
+            isOneToOne: false
+            referencedRelation: "labels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      label_scheduled_sends: {
+        Row: {
+          contact_id: string
+          contact_label_id: string
+          created_at: string | null
+          id: string
+          scheduled_for: string
+          scheduled_message_id: string
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          contact_id: string
+          contact_label_id: string
+          created_at?: string | null
+          id?: string
+          scheduled_for: string
+          scheduled_message_id: string
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          contact_id?: string
+          contact_label_id?: string
+          created_at?: string | null
+          id?: string
+          scheduled_for?: string
+          scheduled_message_id?: string
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "label_scheduled_sends_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "label_scheduled_sends_contact_label_id_fkey"
+            columns: ["contact_label_id"]
+            isOneToOne: false
+            referencedRelation: "contact_labels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "label_scheduled_sends_scheduled_message_id_fkey"
+            columns: ["scheduled_message_id"]
+            isOneToOne: false
+            referencedRelation: "label_scheduled_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       labels: {
         Row: {
           color: string

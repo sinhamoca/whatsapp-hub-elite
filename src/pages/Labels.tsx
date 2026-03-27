@@ -7,10 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Tag, ArrowLeft, Users, Hash, Send } from 'lucide-react';
+import { Loader2, Tag, ArrowLeft, Users, Hash, Send, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import BulkSendModal from '@/components/BulkSendModal';
+import LabelScheduledMessages from '@/components/LabelScheduledMessages';
 
 interface Label {
   id: string;
@@ -38,7 +39,7 @@ export default function Labels() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [bulkSendOpen, setBulkSendOpen] = useState(false);
-
+  const [scheduledOpen, setScheduledOpen] = useState(false);
   useEffect(() => {
     if (user) loadLabels();
   }, [user]);
@@ -151,10 +152,17 @@ export default function Labels() {
               : `${labels.length} etiqueta${labels.length !== 1 ? 's' : ''} · ${totalLeads} lead${totalLeads !== 1 ? 's' : ''}`}
           </p>
         </div>
-        {selectedLabel && contacts.length > 0 && !loadingContacts && (
-          <Button size="sm" className="gap-1.5 text-xs" onClick={() => setBulkSendOpen(true)}>
-            <Send className="h-3.5 w-3.5" /> Envio em massa
-          </Button>
+        {selectedLabel && !loadingContacts && (
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => setScheduledOpen(true)}>
+              <Clock className="h-3.5 w-3.5" /> Programadas
+            </Button>
+            {contacts.length > 0 && (
+              <Button size="sm" className="gap-1.5 text-xs" onClick={() => setBulkSendOpen(true)}>
+                <Send className="h-3.5 w-3.5" /> Envio em massa
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
@@ -282,13 +290,22 @@ export default function Labels() {
       </ScrollArea>
 
       {selectedLabel && (
-        <BulkSendModal
-          open={bulkSendOpen}
-          onClose={() => setBulkSendOpen(false)}
-          contacts={contacts}
-          labelName={selectedLabel.name}
-          labelColor={selectedLabel.color}
-        />
+        <>
+          <BulkSendModal
+            open={bulkSendOpen}
+            onClose={() => setBulkSendOpen(false)}
+            contacts={contacts}
+            labelName={selectedLabel.name}
+            labelColor={selectedLabel.color}
+          />
+          <LabelScheduledMessages
+            open={scheduledOpen}
+            onClose={() => setScheduledOpen(false)}
+            labelId={selectedLabel.id}
+            labelName={selectedLabel.name}
+            labelColor={selectedLabel.color}
+          />
+        </>
       )}
     </div>
   );
