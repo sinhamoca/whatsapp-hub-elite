@@ -152,10 +152,17 @@ export default function Labels() {
               : `${labels.length} etiqueta${labels.length !== 1 ? 's' : ''} · ${totalLeads} lead${totalLeads !== 1 ? 's' : ''}`}
           </p>
         </div>
-        {selectedLabel && contacts.length > 0 && !loadingContacts && (
-          <Button size="sm" className="gap-1.5 text-xs" onClick={() => setBulkSendOpen(true)}>
-            <Send className="h-3.5 w-3.5" /> Envio em massa
-          </Button>
+        {selectedLabel && !loadingContacts && (
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => setScheduledOpen(true)}>
+              <Clock className="h-3.5 w-3.5" /> Programadas
+            </Button>
+            {contacts.length > 0 && (
+              <Button size="sm" className="gap-1.5 text-xs" onClick={() => setBulkSendOpen(true)}>
+                <Send className="h-3.5 w-3.5" /> Envio em massa
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
