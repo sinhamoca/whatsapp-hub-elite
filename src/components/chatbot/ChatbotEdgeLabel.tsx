@@ -1,5 +1,4 @@
-import { memo } from 'react';
-import { type EdgeProps, BaseEdge, getSmoothStepPath, EdgeLabelRenderer } from '@xyflow/react';
+import { type EdgeProps, BaseEdge, getSmoothStepPath, EdgeLabelRenderer, useEdges } from '@xyflow/react';
 import { Badge } from '@/components/ui/badge';
 
 interface ChatbotEdgeData {
@@ -8,8 +7,13 @@ interface ChatbotEdgeData {
   [key: string]: unknown;
 }
 
-function ChatbotEdge(props: EdgeProps & { data?: ChatbotEdgeData }) {
-  const { sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, markerEnd, style, id } = props;
+export default function ChatbotEdge(props: EdgeProps & { data?: ChatbotEdgeData }) {
+  const { sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style, id } = props;
+
+  // Read live edge data from the store to ensure re-renders on data changes
+  const edges = useEdges();
+  const liveEdge = edges.find(e => e.id === id);
+  const data = (liveEdge?.data ?? props.data) as ChatbotEdgeData | undefined;
 
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition
@@ -52,14 +56,3 @@ function ChatbotEdge(props: EdgeProps & { data?: ChatbotEdgeData }) {
     </>
   );
 }
-
-export default memo(ChatbotEdge, (prev, next) => {
-  if (prev.data?.keywords?.length !== next.data?.keywords?.length) return false;
-  if (prev.data?.matchType !== next.data?.matchType) return false;
-  if (prev.sourceX !== next.sourceX || prev.sourceY !== next.sourceY) return false;
-  if (prev.targetX !== next.targetX || prev.targetY !== next.targetY) return false;
-  const prevKw = prev.data?.keywords ?? [];
-  const nextKw = next.data?.keywords ?? [];
-  if (prevKw.some((k: string, i: number) => k !== nextKw[i])) return false;
-  return true;
-});
