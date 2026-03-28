@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,16 +16,43 @@ interface Props {
 }
 
 export default function EdgeConfigModal({ open, keywords: initial, matchType: initMatch, onSave, onClose }: Props) {
-  const [keywords, setKeywords] = useState<string[]>(initial);
-  const [matchType, setMatchType] = useState(initMatch);
+  const [keywords, setKeywords] = useState<string[]>(initial ?? []);
+  const [matchType, setMatchType] = useState(initMatch ?? 'contains');
   const [input, setInput] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setKeywords(initial ?? []);
+    setMatchType(initMatch ?? 'contains');
+    setInput('');
+  }, [open, initial, initMatch]);
+
+  const normalizeKeywords = (values: string[]) => {
+    const seen = new Set<string>();
+    return values
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .filter((value) => {
+        const normalized = value.toLowerCase();
+        if (seen.has(normalized)) return false;
+        seen.add(normalized);
+        return true;
+      });
+  };
 
   const addKeyword = () => {
     const kw = input.trim();
-    if (kw && !keywords.some(k => k.toLowerCase() === kw.toLowerCase())) {
-      setKeywords([...keywords, kw]);
-      setInput('');
-    }
+    if (!kw) return;
+
+    const nextKeywords = normalizeKeywords([...keywords, kw]);
+    setKeywords(nextKeywords);
+    setInput('');
+  };
+
+  const handleSave = () => {
+    const pending = input.trim();
+    const finalKeywords = normalizeKeywords(pending ? [...keywords, pending] : keywords);
+    onSave(finalKeywords, matchType);
   };
 
   const removeKeyword = (idx: number) => {
@@ -88,7 +115,7 @@ export default function EdgeConfigModal({ open, keywords: initial, matchType: in
 
         <DialogFooter>
           <Button size="sm" variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" onClick={() => onSave(keywords, matchType)}>Salvar</Button>
+          <Button size="sm" onClick={handleSave}>Salvar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
