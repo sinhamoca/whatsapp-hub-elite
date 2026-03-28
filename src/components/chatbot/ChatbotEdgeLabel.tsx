@@ -53,4 +53,13 @@ function ChatbotEdge(props: EdgeProps & { data?: ChatbotEdgeData }) {
   );
 }
 
-export default memo(ChatbotEdge);
+export default memo(ChatbotEdge, (prev, next) => {
+  if (prev.data?.keywords?.length !== next.data?.keywords?.length) return false;
+  if (prev.data?.matchType !== next.data?.matchType) return false;
+  if (prev.sourceX !== next.sourceX || prev.sourceY !== next.sourceY) return false;
+  if (prev.targetX !== next.targetX || prev.targetY !== next.targetY) return false;
+  const prevKw = prev.data?.keywords ?? [];
+  const nextKw = next.data?.keywords ?? [];
+  if (prevKw.some((k: string, i: number) => k !== nextKw[i])) return false;
+  return true;
+});
